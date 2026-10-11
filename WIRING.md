@@ -90,7 +90,7 @@ Short on white? Gray or purple is fine. Just use the **same** color for every 5V
   7              *=====+== * white                                *    <- PAN servo red
   8                    |                   * ORANGE -> pin 9       *    <- PAN servo orange
   9-11                 |                 (empty)
- 12     [cap -] [cap +]|                                                <- capacitor
+ 12                    |                 (empty)
  13-15                 |                 (empty)
  16      *-------------+-- * black                                *    <- TILT servo brown
  17              *=====+== * white                                *    <- TILT servo red
@@ -163,13 +163,7 @@ Servo wire colors: **brown = GND**, **red = 5V**, **orange = signal** (some serv
 | 9  | **white** jumper | **a7** | **left** `+` rail, beside row 7 |
 | 10 | **orange** jumper | **c8** | Arduino pin **~9** |
 
-### Capacitor, row 12
-
-| # | Part | End 1 | End 2 |
-|---|------|-------|-------|
-| 11 | 100 µF capacitor | **long leg (+)** → **left** `+` rail, beside row 12 | **short leg (−)**, stripe side → **left** `−` rail, beside row 12 |
-
-> ⚠️ The capacitor **has a direction**. Backwards, it can pop.
+> **No capacitor.** This build works without one, and a capacitor with a leg in the wrong hole (touching a servo's orange signal row) stops that servo from moving at all. That happened on our build.
 
 ### Tilt servo (tips the panel plate), rows 16–18
 
@@ -278,7 +272,7 @@ If one doesn't move:
 - [ ] Bridges: **left `+` → right `+`** (white), **left `−` → right `−`** (black)
 - [ ] Pan: plug in **e6–e8** (brown, red, orange), black **a6**, white **a7**, orange **c8 → pin 9**
 - [ ] Tilt: plug in **e16–e18** (brown, red, orange), black **a16**, white **a17**, orange **c18 → pin 10**
-- [ ] Capacitor long leg on the **left `+`** rail
+- [ ] **No capacitor** anywhere on the board
 - [ ] Sensors: rows 3–4 yellow → A0, rows 8–9 red → A1, rows 13–14 blue → A2, rows 18–19 green → A3
 - [ ] Sensor blocks: white jumper in the **upper** row, resistor + colored jumper in the **lower** row
 - [ ] Nothing in the empty rows, and nothing in columns **b, d, g, i**
@@ -295,4 +289,5 @@ If one doesn't move:
 | A sensor always reads ~0 | That block's white jumper isn't reaching the right `+` rail, or a sensor wire is loose |
 | Covering one sensor changes a different number | Sensor wires are in the wrong color's block |
 | One servo doesn't move | Its orange jumper is in the wrong row or pin (must be the **orange** row: c8 / c18), or its plug order is wrong |
-| Servo twitches or Arduino resets when moving | Check the capacitor; if it still happens, power the servos from a separate 5V supply (4×AA): its `+` to the **left `+`** rail, its `−` to the **left `−`** rail, and **unplug the Arduino 5V wire (Step 1, #1)** but keep the GND wire |
+| A servo gets the command (`TILT -> 60`) but doesn't move at all | Something is touching its **orange signal row**, most likely a capacitor. Remove it. |
+| Servo twitches or Arduino resets when moving | Fix the servo limits first; if it still happens, power the servos from a separate 5V supply (4×AA): its `+` to the **left `+`** rail, its `−` to the **left `−`** rail, and **unplug the Arduino 5V wire (Step 1, #1)** but keep the GND wire |

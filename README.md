@@ -29,7 +29,6 @@
 | 4 | 10 kΩ resistors (brown-black-orange) |
 | 2 | Micro servos (SG90 / 9g) |
 | 1 | Breadboard + jumper wires |
-| 1 | *(Recommended)* 100 µF electrolytic capacitor for servo power |
 
 ---
 
@@ -67,7 +66,7 @@ With this wiring, **more light gives a bigger reading** (0–1023), which is wha
 | Orange / Yellow (signal), **pan** servo (turns CW/CCW) | **Pin 9** |
 | Orange / Yellow (signal), **tilt** servo (tilts up/down) | **Pin 10** |
 
-> **Power tip:** Two servos moving at once can pull more current than USB gives. That makes the Arduino reset or the servos jitter. Put a **100 µF capacitor** across servo 5V and GND (long leg / + to 5V). If problems continue, power the servos from a separate 5V supply (4×AA pack) and **connect its GND to the Arduino GND**.
+> **Power tip:** Two servos moving at once can pull more current than USB gives. That makes the Arduino reset or the servos jitter. If that happens, power the servos from a separate 5V supply (4×AA pack) and **connect its GND to the Arduino GND**. (We don't use a capacitor: one with a leg in a servo's signal row stops that servo from moving.)
 
 ---
 
@@ -281,13 +280,13 @@ All settings are constants near the top of the code:
 |---------|--------------------|
 | Servo buzzes, jitters, or the tracker gets "stuck" in a corner | A servo is pushing against a hard stop. Find your real limits with `h`, `p`, `t` (step 3) and set `PAN_MIN/MAX`, `TILT_MIN/MAX`. |
 | The `pan:` / `tilt:` numbers change but the readings don't | The servo isn't actually moving: it's at a hard stop, the horn is slipping on the servo, or the servo isn't getting power. Use `p`/`t` to check that each servo really moves. |
-| All four readings dip at the same moment, sometimes `DARK-HOLD` flickers | Power dips from a straining servo. Fix the limits first; then add the 100 µF capacitor or a separate 5V supply for the servos (GND connected to the Arduino GND). |
+| All four readings dip at the same moment, sometimes `DARK-HOLD` flickers | Power dips from a straining servo. Fix the limits first; if it continues, use a separate 5V supply for the servos (GND connected to the Arduino GND). |
 | Runs away from the light | Make sure the light was steady during the startup scan, then type `g` to rescan. The `CHECK:` lines should say it's sure. |
 | `CHECK:` says `can't tell` | The light was too weak or too even during the scan. Use a brighter flashlight, hold it closer and still, and type `g`. |
 | Jitters back and forth when pointed at the light | Calibrate (`c`). If it still jitters, raise `START_THRESHOLD` to `0.12` or lower `GAIN` to `3`. |
 | Stops a bit off from the light | Calibrate (`c`). If it's still off, lower `STOP_THRESHOLD` to `0.02`. |
 | Moves the wrong axis (tilts when it should turn) | Sensors are in the wrong pins, or the `+` wall isn't lined up with the tilt axis. |
-| `Solar tracker starting...` appears mid-run | The Arduino is resetting from servo power dips. Fix the limits, add the capacitor, or use a separate servo supply. |
+| `Solar tracker starting...` appears mid-run | The Arduino is resetting from servo power dips. Fix the limits, or use a separate servo supply. |
 | Never moves | Too dark (`DARK-HOLD`), lined up already (`HOLD`), paused (`MANUAL`, so type `g`), or `SENSOR_TEST_MODE` is still `true`. |
 | Typing commands does nothing | Serial Monitor must be at 9600 baud. Type the command, then press Enter. |
 | Works with a flashlight but not in direct sunlight | In full sun all four sensors saturate near 1023. Swap the four 10 kΩ resistors for **1 kΩ** (brown-black-red) for outdoor use. |
