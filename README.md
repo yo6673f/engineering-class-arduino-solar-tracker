@@ -7,6 +7,7 @@
 ## Repository layout
 
 ```
+├── WIRING.md                          <- hole-by-hole breadboard guide
 ├── platformio.ini                     <- PlatformIO project (VS Code)
 ├── src/
 │   └── main.cpp                       <- PlatformIO code
@@ -33,6 +34,8 @@
 ---
 
 ## Wiring
+
+> **Step-by-step, hole-by-hole breadboard instructions are in [`WIRING.md`](WIRING.md).** The summary is below.
 
 ### Photoresistors
 
