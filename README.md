@@ -144,9 +144,21 @@ The Servo library comes with the Arduino IDE, so there's nothing to install.
 5. Shine the light from the top side of the `+`. The monitor should say `light from: TOP`. Repeat for each side.
 6. Set `SENSOR_TEST_MODE = false` when done.
 
-### 2. Find your servo limits (type `h`, `p`, `t`)
+### 2. Center the servo arms (`SERVO_CENTER_MODE`)
 
-**Do this before anything else moves on its own.** If the code tells a servo to go further than your 3D printed parts allow, the servo stalls against the part. It buzzes, jitters, heats up, causes power dips, and the tracker thinks it's pointing somewhere it isn't. That was behind the "stuck in one corner" behavior.
+If the tracker leans toward one corner even when it's "in the middle", the servo arms were attached at the wrong angle, so the servo's 90° isn't the middle of your mechanism. Fix it once, mechanically:
+
+1. In the code, set `SERVO_CENTER_MODE = true` and upload. Both servos go to **exactly 90°** and stay there (no scan, no tracking).
+2. **Pan servo:** unscrew the small screw in the center of the servo arm (horn), pull the arm straight off the servo shaft **without turning the shaft**, and push it back on so the tracker points **straight ahead, in the middle of its swing**. Put the screw back.
+3. **Tilt servo:** same thing, re-seated so the plate is **flat** (panel facing straight up).
+4. The splines on the shaft only allow certain angles, so you may be a few degrees off. That's fine: fix the last bit with `TILT_FLAT_ANGLE` in step 3.
+5. Set `SERVO_CENTER_MODE = false` and re-upload.
+
+> Unplug USB before forcing anything by hand. Never twist a servo's shaft with your fingers while it's powered; it strips the gears.
+
+### 3. Find your servo limits (type `h`, `p`, `t`)
+
+**Do this right after centering the arms.** If the code tells a servo to go further than your 3D printed parts allow, the servo stalls against the part. It buzzes, jitters, heats up, causes power dips, and the tracker thinks it's pointing somewhere it isn't. That was behind the "stuck in one corner" behavior.
 
 1. Upload and open the Serial Monitor (9600 baud). Let the startup scan finish.
 2. Type **`h`** + Enter. Both servos go to the middle (90°) and tracking pauses.
@@ -163,7 +175,7 @@ The Servo library comes with the Arduino IDE, so there's nothing to install.
    ```
    Re-upload. The defaults (pan 10–170, tilt 30–150) are already safer than 0–180, but your build may need narrower.
 
-### 3. Calibrate the sensors (type `c`)
+### 4. Calibrate the sensors (type `c`)
 
 No two photoresistors read exactly the same. Calibration measures each one's quirk once and corrects for it.
 
@@ -175,7 +187,7 @@ No two photoresistors read exactly the same. Calibration measures each one's qui
 
 If it says `FAILED`, one sensor read very differently. Check that the paper covers all four sensors evenly and that sensor's wiring.
 
-### 4. Normal use
+### 5. Normal use
 
 Every time it powers on, the tracker:
 1. **Moves to the middle** (90/90).
@@ -251,7 +263,7 @@ All settings are constants near the top of the code:
 | `SMOOTHING` | `0.3` | 0–1. Lower = smoother readings but slower reactions. |
 | `LOOP_INTERVAL_MS` | `40` | Time between updates. |
 | `FLAT_HYSTERESIS` | `6.0` | Degrees past flat before the pan direction flips. |
-| `PAN_MIN/MAX`, `TILT_MIN/MAX` | `10/170`, `30/150` | Servo limits. **Set these for your build** (see step 2). |
+| `PAN_MIN/MAX`, `TILT_MIN/MAX` | `10/170`, `30/150` | Servo limits. **Set these for your build** (see step 3). |
 | `AUTO_DIRECTION_CHECK` | `true` | Figure out the servo directions during each scan. |
 | `SCAN_ON_STARTUP` | `true` | Scan for the light every time it powers on. |
 | `LOST_FRACTION` / `LOST_TIME_MS` | `0.30` / `3000` | Rescan if it's below 30% of the scan's brightness for 3 seconds. |
@@ -267,7 +279,7 @@ All settings are constants near the top of the code:
 
 | Problem | Likely cause / fix |
 |---------|--------------------|
-| Servo buzzes, jitters, or the tracker gets "stuck" in a corner | A servo is pushing against a hard stop. Find your real limits with `h`, `p`, `t` (step 2) and set `PAN_MIN/MAX`, `TILT_MIN/MAX`. |
+| Servo buzzes, jitters, or the tracker gets "stuck" in a corner | A servo is pushing against a hard stop. Find your real limits with `h`, `p`, `t` (step 3) and set `PAN_MIN/MAX`, `TILT_MIN/MAX`. |
 | The `pan:` / `tilt:` numbers change but the readings don't | The servo isn't actually moving: it's at a hard stop, the horn is slipping on the servo, or the servo isn't getting power. Use `p`/`t` to check that each servo really moves. |
 | All four readings dip at the same moment, sometimes `DARK-HOLD` flickers | Power dips from a straining servo. Fix the limits first; then add the 100 µF capacitor or a separate 5V supply for the servos (GND connected to the Arduino GND). |
 | Runs away from the light | Make sure the light was steady during the startup scan, then type `g` to rescan. The `CHECK:` lines should say it's sure. |

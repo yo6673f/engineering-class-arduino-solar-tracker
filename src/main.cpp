@@ -203,6 +203,12 @@ const unsigned long DEBUG_PRINT_INTERVAL_MS = 250;
 // Use it to confirm which wire color goes to which quadrant.
 const bool SENSOR_TEST_MODE = false;
 
+// SERVO CENTER MODE: on power-up both servos go to exactly 90 degrees and
+// STAY there (no scan, no tracking). Use it to re-attach the servo arms so
+// that 90 degrees really is the middle of your mechanism (see README).
+// You can still type p / t commands to test, and g to start tracking.
+const bool SERVO_CENTER_MODE = false;
+
 // ============================================================================
 //  CALIBRATION SETTINGS
 // ============================================================================
@@ -343,7 +349,15 @@ void setup() {
   delay(1500);  // give the servos time to reach the middle
   readAllSensors(true);
 
-  if (SCAN_ON_STARTUP && !SENSOR_TEST_MODE) {
+  if (SERVO_CENTER_MODE) {
+    panPos = 90;
+    tiltPos = 90;
+    writeServos();
+    manualMode = true;
+    Serial.println(F("*** SERVO CENTER MODE: both servos held at exactly 90 degrees ***"));
+    Serial.println(F("Re-attach the servo arms so the plate is centered and flat."));
+    Serial.println(F("Then set SERVO_CENTER_MODE = false and re-upload."));
+  } else if (SCAN_ON_STARTUP && !SENSOR_TEST_MODE) {
     scanForLight();
   }
 }
