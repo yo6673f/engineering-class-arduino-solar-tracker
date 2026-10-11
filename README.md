@@ -144,40 +144,63 @@ The Servo library comes with the Arduino IDE, so there's nothing to install.
 5. Shine the light from the top side of the `+`. The monitor should say `light from: TOP`. Repeat for each side.
 6. Set `SENSOR_TEST_MODE = false` when done.
 
-### 2. Calibrate the sensors (type `c`)
+### 2. Find your servo limits (type `h`, `p`, `t`)
 
-No two photoresistors read exactly the same. If one naturally reads higher than its partner, the tracker thinks the light is off to that side even when it isn't, so it jitters or drifts. Calibration measures each sensor's quirk once and corrects for it.
+**Do this before anything else moves on its own.** If the code tells a servo to go further than your 3D printed parts allow, the servo stalls against the part. It buzzes, jitters, heats up, causes power dips, and the tracker thinks it's pointing somewhere it isn't. That was behind the "stuck in one corner" behavior.
 
-1. Upload with `SENSOR_TEST_MODE = false` and open the Serial Monitor (9600 baud).
-2. Lay a sheet of **plain white paper flat across the top of the `+` wall**, covering all four sensors.
-3. Shine the flashlight **straight down onto the paper** from about a foot above. The paper spreads the light evenly, so all four sensors get the same amount.
-4. Type **`c`** and press **Enter**. Hold everything still through the 5-second countdown and the 2-second measurement.
-5. It prints something like `Calibration (100 = no correction): TL 95  TR 134  BL 105  BR 80` and saves it. The calibration **stays saved** after unplugging and re-uploading. Redo it if you swap a sensor. Type `r` to clear it.
-
-If it says `FAILED`, one sensor read very differently from the others. Check that the paper covers all four sensors evenly and that sensor's wiring.
-
-### 3. Direction test (type `d`)
-
-This checks that each axis turns **toward** the light and tells you exactly what to change if it doesn't.
-
-1. Type **`d`** and press **Enter**. The panel tilts to one side and stops.
-2. Hold the flashlight **steady**, 1–2 feet away, shining **straight at the panel face** (from the direction it's now pointing).
-3. **Keep the light still** while it nudges each servo back and forth (don't follow the panel).
-4. It prints a result for each axis:
+1. Upload and open the Serial Monitor (9600 baud). Let the startup scan finish.
+2. Type **`h`** + Enter. Both servos go to the middle (90°) and tracking pauses.
+3. **Tilt limits:** type `t70` + Enter, then `t60`, `t50`, ... watching the plate. When it **stops moving, hits something, or the servo buzzes**, note that angle, add about **5°** back, and that's `TILT_MIN`. Then go up (`t110`, `t120`, ...) to find `TILT_MAX`.
+4. **Pan limits:** type `h` + Enter, then do the same with `p` (`p70`, `p50`, ... and `p110`, `p130`, ...) for `PAN_MIN` and `PAN_MAX`.
+5. **Flat angle:** type `t90` + Enter. If the panel isn't facing straight up, try nearby numbers (`t85`, `t95`, ...) until it is. That number is `TILT_FLAT_ANGLE`.
+6. Put the numbers in the code:
+   ```cpp
+   const int PAN_MIN  = 10;     // <- your numbers
+   const int PAN_MAX  = 170;
+   const int TILT_MIN  = 30;
+   const int TILT_MAX  = 150;
+   const int TILT_FLAT_ANGLE = 90;
    ```
-   DONE. Results:
-     TILT (error change -57%): set  TILT_REVERSED = false   (already correct)
-     PAN  (error change 43%): set  PAN_REVERSED  = true   <-- CHANGE THIS and re-upload
+   Re-upload. The defaults (pan 10–170, tilt 30–150) are already safer than 0–180, but your build may need narrower.
+
+### 3. Calibrate the sensors (type `c`)
+
+No two photoresistors read exactly the same. Calibration measures each one's quirk once and corrects for it.
+
+1. Lay a sheet of **plain white paper flat across the top of the `+` wall**, covering all four sensors.
+2. Shine the flashlight **straight down onto the paper** from about a foot above.
+3. Type **`c`** + Enter and hold still through the countdown and measurement.
+4. It prints something like `Calibration (100 = no correction): TL 95  TR 134  BL 105  BR 80` and saves it. It **stays saved** after unplugging and re-uploading. Redo it if you swap a sensor. Type `r` to clear it.
+5. Remove the paper and type **`g`** + Enter to start tracking.
+
+If it says `FAILED`, one sensor read very differently. Check that the paper covers all four sensors evenly and that sensor's wiring.
+
+### 4. Normal use
+
+Every time it powers on, the tracker:
+1. **Moves to the middle** (90/90).
+2. **Scans** for the brightest direction (about 15 seconds). **Hold your flashlight still during the scan.**
+3. **Checks the servo directions** using what it saw during the scan, and fixes any that are backwards:
    ```
-5. Change any setting marked **`<-- CHANGE THIS`** at the top of the code, re-upload, and run `d` again. Both should say `already correct`.
-   If it says `can't tell`, aim the light more directly at the panel, move it closer, and retry.
+   CHECK: which way is toward the light?
+     TILT: normal  (sure: 99%)
+     PAN : reversed  (sure: 92%)  <- auto-corrected
+   ```
+   If you see `auto-corrected` every time, you can set `TILT_REVERSED` / `PAN_REVERSED` in the code to match so it starts out right, but you don't have to.
+4. **Tracks.** If it loses the light (it ends up much darker than what the scan found, for 3 seconds), it prints `LOST the light` and scans again.
 
-> **Run the direction test whenever you rebuild or re-mount a servo.** A backwards setting makes that axis run away from the light into its end stop. That was the cause of the "shuffling between extremes" problem.
+Type **`g`** + Enter at any time to make it rescan and restart tracking.
 
-### 4. Set the flat angle and limits
+### Serial Monitor commands
 
-- `TILT_FLAT_ANGLE`: the tilt servo angle where the panel faces **straight up**. It's 90 if you centered the servo horn when assembling. If your plate is flat at a different angle, change this number. The pan-flip and wrap features depend on it.
-- `PAN_MIN / PAN_MAX / TILT_MIN / TILT_MAX`: narrow these if the printed parts collide or the wires get pulled near the ends of travel.
+| Type (then Enter) | What it does |
+|-------------------|--------------|
+| `h` | Go **home** (both servos to the middle) and pause tracking |
+| `p90` | Move **pan** to 90° and pause (any number 0–180) |
+| `t45` | Move **tilt** to 45° and pause |
+| `g` | **Go:** scan for the light, check directions, start tracking |
+| `c` | **Calibrate** the sensors (paper + flashlight) |
+| `r` | **Reset** calibration |
 
 ---
 
@@ -191,11 +214,11 @@ TRACK | TL:935 TR:904 BL:928 BR:948 | up/down:12% left/right:-3% | light from: T
 
 | Part | Meaning |
 |------|---------|
-| `TRACK` / `HOLD` | Moving toward the light / lined up and resting. Also `DARK-HOLD` (too dark), `WRAP` (big swing past an end stop), `TEST` (sensor test mode). |
+| `TRACK` / `HOLD` | Moving toward the light / lined up and resting. Also `MANUAL` (paused after `h`/`p`/`t`, type `g` to resume), `DARK-HOLD` (too dark), `WRAP` (big swing past an end stop), `TEST` (sensor test mode). |
 | `TL:935 ...` | Raw readings, 0–1023 (same numbers as the sensor test). |
 | `up/down:12%` | How much brighter the top is than the bottom (negative = bottom brighter). It starts moving above **8%** and stops below **3%**. |
 | `left/right:-3%` | Same for left vs. right (negative = right brighter). |
-| `pan:84 tilt:101` | Where the servos are aimed. |
+| `pan:84 tilt:101` | Where the servos are aimed. `(at limit)` means one is at a limit from the code. |
 
 Seeing `Solar tracker starting...` again in the middle of a run means the Arduino **reset**, which is almost always a servo power problem (see Troubleshooting).
 
@@ -209,6 +232,8 @@ Seeing `Solar tracker starting...` again in the middle of a run means the Arduin
 - **Start/stop thresholds:** it starts moving at an 8% difference but keeps going until it's under 3%, so it doesn't twitch on and off around one cutoff.
 - **Small steps** (at most 1° every 40 ms), sent to the servos in fine microsecond steps instead of whole degrees, so motion is smooth and the plate has time to keep up.
 - **Flat-zone buffer:** the pan direction only flips once the plate is 6° past flat, so it doesn't flip-flop when the light is overhead.
+- **Startup scan + direction check:** it starts out pointed at the light, and checks for itself which way each servo has to turn, so a servo mounted backwards doesn't send it running away from the light.
+- **Lost-light recovery:** if it ends up somewhere much darker than what the scan found, it scans again instead of sitting in a corner.
 - **Safe wrap-around:** it only swings to the other end stop if the light has been *clearly* past the end (30% difference) for 1.5 seconds. Once it has, it can't swing back until the pan has moved 20° on its own, so it can never bounce between end stops. The swing itself is slowed down to avoid power dips.
 
 ---
@@ -226,6 +251,10 @@ All settings are constants near the top of the code:
 | `SMOOTHING` | `0.3` | 0–1. Lower = smoother readings but slower reactions. |
 | `LOOP_INTERVAL_MS` | `40` | Time between updates. |
 | `FLAT_HYSTERESIS` | `6.0` | Degrees past flat before the pan direction flips. |
+| `PAN_MIN/MAX`, `TILT_MIN/MAX` | `10/170`, `30/150` | Servo limits. **Set these for your build** (see step 2). |
+| `AUTO_DIRECTION_CHECK` | `true` | Figure out the servo directions during each scan. |
+| `SCAN_ON_STARTUP` | `true` | Scan for the light every time it powers on. |
+| `LOST_FRACTION` / `LOST_TIME_MS` | `0.30` / `3000` | Rescan if it's below 30% of the scan's brightness for 3 seconds. |
 | `WRAP_PAN_AT_LIMITS` | `true` | Allow the big swing past a pan end stop. Set `false` to just wait at the end stop. |
 | `WRAP_MIN_ERROR` / `WRAP_CONFIRM_MS` | `0.30` / `1500` | How clearly, and for how long, the light must be past the end stop before swinging. |
 | `DARK_THRESHOLD` | `30` | If the average raw reading is below this, it holds still. |
@@ -238,14 +267,15 @@ All settings are constants near the top of the code:
 
 | Problem | Likely cause / fix |
 |---------|--------------------|
-| Runs **away** from the light / shuffles between extreme positions | A direction setting is backwards. Run the direction test (`d`). |
+| Servo buzzes, jitters, or the tracker gets "stuck" in a corner | A servo is pushing against a hard stop. Find your real limits with `h`, `p`, `t` (step 2) and set `PAN_MIN/MAX`, `TILT_MIN/MAX`. |
+| The `pan:` / `tilt:` numbers change but the readings don't | The servo isn't actually moving: it's at a hard stop, the horn is slipping on the servo, or the servo isn't getting power. Use `p`/`t` to check that each servo really moves. |
+| All four readings dip at the same moment, sometimes `DARK-HOLD` flickers | Power dips from a straining servo. Fix the limits first; then add the 100 µF capacitor or a separate 5V supply for the servos (GND connected to the Arduino GND). |
+| Runs away from the light | Make sure the light was steady during the startup scan, then type `g` to rescan. The `CHECK:` lines should say it's sure. |
+| `CHECK:` says `can't tell` | The light was too weak or too even during the scan. Use a brighter flashlight, hold it closer and still, and type `g`. |
 | Jitters back and forth when pointed at the light | Calibrate (`c`). If it still jitters, raise `START_THRESHOLD` to `0.12` or lower `GAIN` to `3`. |
 | Stops a bit off from the light | Calibrate (`c`). If it's still off, lower `STOP_THRESHOLD` to `0.02`. |
-| Moves away on **both** axes, or wanders randomly | Readings are inverted. Run the sensor test and check `INVERT_LDR_READINGS`. |
 | Moves the wrong axis (tilts when it should turn) | Sensors are in the wrong pins, or the `+` wall isn't lined up with the tilt axis. |
-| Pan direction is only wrong when tilted to one side | `TILT_FLAT_ANGLE` doesn't match the angle where your panel is actually flat. |
-| `Solar tracker starting...` appears mid-run, or servos twitch randomly | The Arduino is resetting from servo power dips. Add the 100 µF capacitor, or power the servos from a separate 5V supply (4×AA) with its GND connected to the Arduino GND. |
-| Never moves | Too dark (`DARK-HOLD`), already lined up (`HOLD`, so try moving the light), or `SENSOR_TEST_MODE` is still `true`. |
-| Typing `c` / `d` does nothing | Make sure the Serial Monitor is at 9600 baud, then type the letter and press Enter. |
-| Serial Monitor shows garbage | Set the baud rate to 9600. |
+| `Solar tracker starting...` appears mid-run | The Arduino is resetting from servo power dips. Fix the limits, add the capacitor, or use a separate servo supply. |
+| Never moves | Too dark (`DARK-HOLD`), lined up already (`HOLD`), paused (`MANUAL`, so type `g`), or `SENSOR_TEST_MODE` is still `true`. |
+| Typing commands does nothing | Serial Monitor must be at 9600 baud. Type the command, then press Enter. |
 | Works with a flashlight but not in direct sunlight | In full sun all four sensors saturate near 1023. Swap the four 10 kΩ resistors for **1 kΩ** (brown-black-red) for outdoor use. |

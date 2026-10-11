@@ -24,13 +24,20 @@
  *  - Top pair vs. bottom pair  -> drives the TILT servo (up / down)
  *  - Left pair vs. right pair  -> drives the PAN  servo (CW / CCW)
  *
- *  The code always moves the panel TOWARD the brighter side, so the shadows
- *  shrink until all four sensors see about the same light.
+ *  ON STARTUP it:
+ *    1. moves both servos smoothly to the middle (HOME),
+ *    2. SCANS around to find the brightest direction and points there,
+ *    3. uses what it saw during the scan to CHECK which way each servo has
+ *       to turn to go toward the light (and fixes it if it's backwards),
+ *    4. then tracks. If it ever loses the light, it scans again.
  *
- *  SERIAL COMMANDS (Serial Monitor, 9600 baud - type the letter, press Enter)
- *    d  = direction test: tells you if TILT_REVERSED / PAN_REVERSED are right
- *    c  = calibrate the sensors so they all read the same under the same light
- *    r  = reset calibration back to "no correction"
+ *  SERIAL COMMANDS (Serial Monitor, 9600 baud - type, then press Enter)
+ *    h      = go HOME (both servos to the middle) and pause tracking
+ *    p90    = move PAN to 90 degrees and pause (any number works)
+ *    t45    = move TILT to 45 degrees and pause
+ *    g      = GO: scan for the light, check directions, start tracking again
+ *    c      = calibrate the sensors (white paper over the + wall, light on top)
+ *    r      = reset sensor calibration
  *
  *  IMPORTANT: This file and arduino/SolarTracker/SolarTracker.ino are meant to
  *  be IDENTICAL. If you change one, copy the change into the other.
@@ -58,45 +65,32 @@ const uint8_t PAN_SERVO_PIN  = 9;   // turns the tracker clockwise / countercloc
 const uint8_t TILT_SERVO_PIN = 10;  // tilts the panel plate up / down
 
 // ============================================================================
-//  DIRECTION SETTINGS
+//  SERVO LIMITS  (degrees, 0 - 180)   <-- SET THESE FOR YOUR BUILD
 // ============================================================================
-//
-//  Easiest way to get these right: upload, open the Serial Monitor, type  d
-//  and press Enter, then follow the instructions. The direction test tells
-//  you exactly what to set here.
-//
-//  (Manual way: shine a flashlight from off to one side. If an axis turns
-//  AWAY from the light, flip its setting. Test pan with the plate tilted
-//  clearly to one side, not flat.)
+//  If a servo is told to go further than the 3D printed parts allow, it
+//  stalls against the part: it buzzes, jitters, gets hot, and the tracker
+//  thinks it's somewhere it isn't. Find your real limits like this:
+//    1. Upload, open the Serial Monitor, type  h  + Enter (goes to the middle).
+//    2. Type  t40  + Enter, then  t30, t20 ... until the plate stops moving
+//       or hits something. Add ~5 degrees back and that's TILT_MIN.
+//    3. Do the same going up (t140, t150, ...) for TILT_MAX, and with
+//       p for the pan servo (PAN_MIN / PAN_MAX).
 
-const bool TILT_REVERSED = false;
-const bool PAN_REVERSED  = false;
-
-// Set to true ONLY if your readings go DOWN when you shine light on a sensor.
-// (That happens if the LDR and 10k resistor are swapped in the divider.)
-const bool INVERT_LDR_READINGS = false;
-
-// ============================================================================
-//  SERVO LIMITS  (degrees, 0 - 180)
-// ============================================================================
-//  Narrow these if the 3D printed parts hit each other or pull on wires near
-//  the ends of travel.
-
-const int PAN_MIN  = 0;
-const int PAN_MAX  = 180;
+const int PAN_MIN  = 10;
+const int PAN_MAX  = 170;
 const int PAN_HOME = 90;
 
-const int TILT_MIN  = 0;
-const int TILT_MAX  = 180;
+const int TILT_MIN  = 30;
+const int TILT_MAX  = 150;
 const int TILT_HOME = 90;
 
 // Tilt servo angle at which the panel faces STRAIGHT UP at the sky (flat).
+// Check it: type  t90  + Enter. If the plate isn't flat, try other numbers
+// until it is, and put that number here.
 //
-// Why this matters: when the plate tilts past flat to the other side, the
-// panel is "upside down" relative to the pan servo, so turning the pan servo
-// the same way would swing the panel the OPPOSITE direction. The code flips
-// the pan direction when the plate crosses flat so it still turns toward the
-// light.
+// Why it matters: when the plate tilts past flat to the other side, the panel
+// is "upside down" relative to the pan servo, so the pan direction has to
+// flip to keep turning toward the light. The code does that at this angle.
 const int  TILT_FLAT_ANGLE    = 90;
 const bool FLIP_PAN_PAST_FLAT = true;
 
@@ -105,18 +99,55 @@ const bool FLIP_PAN_PAST_FLAT = true;
 const float FLAT_HYSTERESIS = 6.0;
 
 // ============================================================================
+//  DIRECTION SETTINGS
+// ============================================================================
+//  With AUTO_DIRECTION_CHECK on (recommended), the tracker figures these out
+//  by itself during every scan, so you normally never touch them. They're
+//  only the starting guess (and what's used if the scan can't tell).
+
+const bool AUTO_DIRECTION_CHECK = true;
+const bool TILT_REVERSED = false;
+const bool PAN_REVERSED  = false;
+
+// Set to true ONLY if your readings go DOWN when you shine light on a sensor.
+// (That happens if the LDR and 10k resistor are swapped in the divider.)
+const bool INVERT_LDR_READINGS = false;
+
+// ============================================================================
+//  SCANNING  (finding the light on startup, or when it's been lost)
+// ============================================================================
+
+const bool  SCAN_ON_STARTUP = true;
+const int   SCAN_ROWS = 4;              // tilt levels, as offsets from flat:
+const float SCAN_TILT_OFFSETS[SCAN_ROWS] = {-60, -30, 30, 60};
+const int   SCAN_COLS = 5;              // pan positions per tilt level
+const float SCAN_SPEED = 0.2;           // degrees per millisecond while scanning
+const unsigned long SCAN_SETTLE_MS = 200;  // wait for wobble before measuring
+
+// The direction check has to be at least this sure (0 - 1) before it changes
+// a direction. Below that it keeps the current setting.
+const float DIRECTION_MIN_CONFIDENCE = 0.3;
+// ...and the brightest scan position must be at least this many times
+// brighter than the darkest one (otherwise the light is too even to tell).
+const float DIRECTION_MIN_CONTRAST = 1.5;
+
+// "Lost the light": total brightness has stayed below this fraction of what
+// the last scan found, for LOST_TIME_MS. Then it scans again (but not more
+// often than RESCAN_COOLDOWN_MS).
+const float LOST_FRACTION      = 0.30;
+const unsigned long LOST_TIME_MS       = 3000;
+const unsigned long RESCAN_COOLDOWN_MS = 10000;
+
+// ============================================================================
 //  PAN "WRAP-AROUND"  (reaching light that's behind the pan end stops)
 // ============================================================================
-//  The pan servo only turns 180 degrees. If the light is further around than
-//  that, the panel can still point at it by swinging the pan to its OTHER end
-//  and flipping the tilt to the other side of flat. This only happens when:
-//    - the pan is stuck at an end stop, AND
-//    - the light is CLEARLY further that way (error >= WRAP_MIN_ERROR), AND
-//    - that has been true for WRAP_CONFIRM_MS without a break.
-//  After a wrap it can't wrap again until the pan has moved at least
-//  WRAP_REARM_DEGREES away from where it landed, so it can never bounce back
-//  and forth between the end stops.
-//  Set to false if you'd rather it just wait at the end stop.
+//  The pan servo can't turn all the way around. If the light is further
+//  around than that, the panel can still point at it by swinging the pan to
+//  its OTHER end and flipping the tilt to the other side of flat. This only
+//  happens when the pan is at an end stop, the light is CLEARLY further that
+//  way (error >= WRAP_MIN_ERROR) for WRAP_CONFIRM_MS, and it can't happen
+//  again until the pan has moved WRAP_REARM_DEGREES on its own, so it can
+//  never bounce back and forth. Set to false to just wait at the end stop.
 
 const bool  WRAP_PAN_AT_LIMITS   = true;
 const float WRAP_MIN_ERROR       = 0.30;   // 30% left/right difference
@@ -173,7 +204,7 @@ const unsigned long DEBUG_PRINT_INTERVAL_MS = 250;
 const bool SENSOR_TEST_MODE = false;
 
 // ============================================================================
-//  CALIBRATION / DIRECTION TEST SETTINGS
+//  CALIBRATION SETTINGS
 // ============================================================================
 
 const unsigned long COUNTDOWN_MS   = 5000;  // time to get the light set up
@@ -182,10 +213,6 @@ const float CAL_MIN_GAIN = 0.4;  // reject calibration if a sensor needs more
 const float CAL_MAX_GAIN = 2.5;  // correction than this (probably shaded/broken)
 const int   CAL_EEPROM_ADDR = 0;
 const uint16_t CAL_MAGIC = 0x5A18;  // marks the EEPROM data as valid
-
-const float DIRTEST_TILT_MOVE  = 12.0;  // how far tilt is nudged each way
-const float DIRTEST_PAN_MOVE   = 20.0;  // how far pan is nudged each way
-const float DIRTEST_MIN_CHANGE = 0.08;  // smaller change = "can't tell"
 
 // ============================================================================
 //  GLOBALS
@@ -198,9 +225,21 @@ Servo tiltServo;
 float panPos  = PAN_HOME;
 float tiltPos = TILT_HOME;
 
+// Directions actually in use (start from the settings above, then updated
+// by the automatic direction check).
+bool tiltReversed = TILT_REVERSED;
+bool panReversed  = PAN_REVERSED;
+
 // Sensor order everywhere: 0 = TL, 1 = TR, 2 = BL, 3 = BR
 const uint8_t LDR_PINS[4] = {
   LDR_TOP_LEFT_PIN, LDR_TOP_RIGHT_PIN, LDR_BOTTOM_LEFT_PIN, LDR_BOTTOM_RIGHT_PIN
+};
+
+// One scan measurement: the two errors and the total brightness.
+struct ScanSample {
+  float vert;
+  float horiz;
+  float total;
 };
 
 // Calibration: each sensor's brightness is multiplied by its gain so all four
@@ -212,9 +251,11 @@ struct Calibration {
 };
 Calibration cal;
 
-float raw[4];       // latest raw readings, 0 - 1023 (what you saw in test mode)
-float smoothed[4];  // smoothed, calibrated brightness used for tracking
+float raw[4];        // latest raw readings, 0 - 1023 (what you saw in test mode)
+float smoothed[4];   // smoothed, calibrated brightness used for tracking
+float smoothedRawAvg = 0;  // smoothed average raw reading (for the dark check)
 
+bool manualMode = false;       // true after h / p / t: tracking paused
 bool tiltMoving = false;       // start/stop threshold state for each axis
 bool panMoving  = false;
 bool tiltOnHighSide = true;    // is the plate past flat toward the high angles?
@@ -224,25 +265,44 @@ bool wrapPending = false;
 unsigned long wrapPendingSince = 0;
 float wrapLandingPos = 0;
 
+float scanBestBrightness = 0;  // total brightness found by the last scan
+bool lostPending = false;
+unsigned long lostSince = 0;
+unsigned long lastScanEnd = 0;
+
+char cmdBuffer[10];            // Serial command being typed
+uint8_t cmdLength = 0;
+unsigned long lastCmdCharMs = 0;
+
 unsigned long lastDebugPrint = 0;
 
 // Function prototypes (needed by PlatformIO; harmless in the Arduino IDE)
 float readLdrRaw(uint8_t pin);
 float brightnessFromRaw(float rawValue);
 void  readAllSensors(bool resetSmoothing);
+float totalBrightness();
 void  computeErrors(const float *b, float &vertError, float &horizError);
-void  measureAveragedErrors(float &vertError, float &horizError);
+void  measureAveraged(float &vertError, float &horizError, float &total);
 float clampFloat(float value, float low, float high);
 float computeStep(float error, bool &moving);
 void  writeServos();
-void  slewServosTo(float newPan, float newTilt, unsigned long durationMs);
+void  slewServosTo(float newPan, float newTilt, unsigned long durationMs,
+                   unsigned long settleMs = 300);
+void  moveAtScanSpeed(float newPan, float newTilt);
+void  resetTrackingState();
+void  scanForLight();
+void  measureAt(float pan, float tilt, ScanSample &sample,
+                float &bestB, float &bestPan, float &bestTilt);
+void  decideDirections(ScanSample grid[SCAN_ROWS][SCAN_COLS], const float *rowTilt);
+void  printDirection(const __FlashStringHelper *axis, bool reversed, bool setting,
+                     float vote, float size);
 void  countdown();
 void  handleSerialCommands();
+void  runCommand();
 void  loadCalibration();
 void  resetCalibration();
 void  runCalibration();
 void  printCalibration();
-void  runDirectionTest();
 void  printDebug(float vertError, float horizError, const char *status);
 
 // ============================================================================
@@ -252,6 +312,16 @@ void  printDebug(float vertError, float horizError, const char *status);
 void setup() {
   Serial.begin(9600);
 
+  // ---- Full reset: everything back to the starting state ----
+  panPos  = PAN_HOME;
+  tiltPos = TILT_HOME;
+  tiltReversed = TILT_REVERSED;
+  panReversed  = PAN_REVERSED;
+  manualMode = false;
+  scanBestBrightness = 0;
+  cmdLength = 0;
+  resetTrackingState();
+
   panServo.attach(PAN_SERVO_PIN);
   tiltServo.attach(TILT_SERVO_PIN);
   writeServos();
@@ -259,20 +329,23 @@ void setup() {
   Serial.println(F("Solar tracker starting..."));
   Serial.println(F("(If you see this line again while it's running, the Arduino"));
   Serial.println(F(" reset - usually a servo power problem. See README.)"));
+  Serial.println(F("HOME: both servos to the middle."));
 
   loadCalibration();
   printCalibration();
-  Serial.println(F("Commands: d = direction test, c = calibrate, r = reset calibration"));
+  Serial.println(F("Commands: h=home  p90/t45=move a servo  g=scan+track  c=calibrate"));
 
   if (SENSOR_TEST_MODE) {
     Serial.println(F("*** SENSOR TEST MODE: servos will NOT move ***"));
     Serial.println(F("Shine a light on each sensor - its number should go UP."));
   }
 
-  tiltOnHighSide = (tiltPos >= TILT_FLAT_ANGLE);
-
-  delay(1000);  // give the servos time to reach home
+  delay(1500);  // give the servos time to reach the middle
   readAllSensors(true);
+
+  if (SCAN_ON_STARTUP && !SENSOR_TEST_MODE) {
+    scanForLight();
+  }
 }
 
 // ============================================================================
@@ -298,19 +371,40 @@ void loop() {
     return;
   }
 
-  float rawAvg = (raw[0] + raw[1] + raw[2] + raw[3]) / 4.0;
-  if (rawAvg < DARK_THRESHOLD) {
+  if (manualMode) {
+    printDebug(vertError, horizError, "MANUAL");
+    delay(LOOP_INTERVAL_MS);
+    return;
+  }
+
+  if (smoothedRawAvg < DARK_THRESHOLD) {
     tiltMoving = panMoving = false;
     wrapPending = false;
+    lostPending = false;
     printDebug(vertError, horizError, "DARK-HOLD");
     delay(LOOP_INTERVAL_MS);
     return;
   }
 
-  // ---- 4. TILT: tip the panel toward the brighter (top or bottom) side ----
-  // Default assumption: a bigger tilt angle tips the panel face toward the
-  // TOP sensors. TILT_REVERSED flips this.
-  float tiltDir = TILT_REVERSED ? -1.0 : 1.0;
+  // ---- 4. Lost the light? (much darker than what the scan found) ----
+  if (scanBestBrightness > 0 && totalBrightness() < LOST_FRACTION * scanBestBrightness) {
+    if (!lostPending) {
+      lostPending = true;
+      lostSince = millis();
+    } else if (millis() - lostSince >= LOST_TIME_MS &&
+               millis() - lastScanEnd >= RESCAN_COOLDOWN_MS) {
+      Serial.println(F("LOST the light - scanning for it again..."));
+      scanForLight();
+      return;
+    }
+  } else {
+    lostPending = false;
+  }
+
+  // ---- 5. TILT: tip the panel toward the brighter (top or bottom) side ----
+  // A bigger tilt angle tips the panel face toward the TOP sensors, unless
+  // tiltReversed.
+  float tiltDir = tiltReversed ? -1.0 : 1.0;
   tiltPos += tiltDir * computeStep(vertError, tiltMoving);
   tiltPos = clampFloat(tiltPos, TILT_MIN, TILT_MAX);
 
@@ -319,18 +413,17 @@ void loop() {
   if (tiltPos > TILT_FLAT_ANGLE + FLAT_HYSTERESIS) tiltOnHighSide = true;
   if (tiltPos < TILT_FLAT_ANGLE - FLAT_HYSTERESIS) tiltOnHighSide = false;
 
-  // ---- 5. PAN: turn the panel toward the brighter (left or right) side ----
-  // Default assumption: while the plate is on the high-angle side of flat,
-  // a bigger pan angle swings the panel face toward the LEFT sensors.
-  // PAN_REVERSED flips this. On the other side of flat the effect of the pan
-  // servo is mirrored, so the direction is flipped again.
-  float panDir = PAN_REVERSED ? -1.0 : 1.0;
+  // ---- 6. PAN: turn the panel toward the brighter (left or right) side ----
+  // While the plate is on the high-angle side of flat, a bigger pan angle
+  // swings the panel face toward the LEFT sensors, unless panReversed. On the
+  // other side of flat the pan's effect is mirrored, so it's flipped again.
+  float panDir = panReversed ? -1.0 : 1.0;
   if (FLIP_PAN_PAST_FLAT && !tiltOnHighSide) {
     panDir = -panDir;
   }
   float panStep = panDir * computeStep(horizError, panMoving);
 
-  // ---- 6. Pan is at an end stop but the light is clearly further around ----
+  // ---- 7. Pan is at an end stop but the light is clearly further around ----
   if (!wrapArmed && fabs(panPos - wrapLandingPos) >= WRAP_REARM_DEGREES) {
     wrapArmed = true;
   }
@@ -365,7 +458,7 @@ void loop() {
 
   panPos = clampFloat(panPos + panStep, PAN_MIN, PAN_MAX);
 
-  // ---- 7. Send the new positions to the servos ----
+  // ---- 8. Send the new positions to the servos ----
   writeServos();
 
   printDebug(vertError, horizError, (tiltMoving || panMoving) ? "TRACK" : "HOLD");
@@ -410,8 +503,10 @@ float brightnessFromRaw(float rawValue) {
 // Reads all four sensors, applies calibration, and smooths them over time.
 // resetSmoothing = true throws away the old history (used after big moves).
 void readAllSensors(bool resetSmoothing) {
+  float rawAvg = 0;
   for (int i = 0; i < 4; i++) {
     raw[i] = readLdrRaw(LDR_PINS[i]);
+    rawAvg += raw[i] / 4.0;
     float value = brightnessFromRaw(raw[i]) * cal.gain[i];
     if (resetSmoothing) {
       smoothed[i] = value;
@@ -419,6 +514,17 @@ void readAllSensors(bool resetSmoothing) {
       smoothed[i] += SMOOTHING * (value - smoothed[i]);
     }
   }
+  // Smoothing the dark check too means a single glitchy reading can't
+  // trigger DARK-HOLD.
+  if (resetSmoothing) {
+    smoothedRawAvg = rawAvg;
+  } else {
+    smoothedRawAvg += SMOOTHING * (rawAvg - smoothedRawAvg);
+  }
+}
+
+float totalBrightness() {
+  return smoothed[0] + smoothed[1] + smoothed[2] + smoothed[3];
 }
 
 // Turns four brightness values (TL, TR, BL, BR) into the two errors.
@@ -433,18 +539,20 @@ void computeErrors(const float *b, float &vertError, float &horizError) {
   horizError = (left + right > 0) ? (left - right) / (left + right) : 0;
 }
 
-// Averages the sensors for half a second and returns the errors (used by
-// the direction test, where accuracy matters more than speed).
-void measureAveragedErrors(float &vertError, float &horizError) {
-  float total[4] = {0, 0, 0, 0};
-  const int count = 25;
+// Averages the sensors for a moment and returns the errors and the total
+// brightness (used by scanning and the direction check, where accuracy
+// matters more than speed).
+void measureAveraged(float &vertError, float &horizError, float &total) {
+  float sum[4] = {0, 0, 0, 0};
+  const int count = 6;
   for (int n = 0; n < count; n++) {
     for (int i = 0; i < 4; i++) {
-      total[i] += brightnessFromRaw(readLdrRaw(LDR_PINS[i])) * cal.gain[i];
+      sum[i] += brightnessFromRaw(readLdrRaw(LDR_PINS[i])) * cal.gain[i];
     }
-    delay(20);
+    delay(10);
   }
-  computeErrors(total, vertError, horizError);
+  computeErrors(sum, vertError, horizError);
+  total = (sum[0] + sum[1] + sum[2] + sum[3]) / count;
 }
 
 // ============================================================================
@@ -478,7 +586,8 @@ void writeServos() {
 
 // Moves both servos smoothly to a new position over durationMs, instead of
 // slamming them there (big sudden moves can brown out the Arduino).
-void slewServosTo(float newPan, float newTilt, unsigned long durationMs) {
+void slewServosTo(float newPan, float newTilt, unsigned long durationMs,
+                  unsigned long settleMs) {
   const unsigned long stepMs = 20;
   int steps = durationMs / stepMs;
   if (steps < 1) steps = 1;
@@ -490,7 +599,189 @@ void slewServosTo(float newPan, float newTilt, unsigned long durationMs) {
     writeServos();
     delay(stepMs);
   }
-  delay(300);  // let the plate stop wobbling
+  delay(settleMs);  // let the plate stop wobbling
+}
+
+// Smooth move whose duration depends on how far it has to go.
+void moveAtScanSpeed(float newPan, float newTilt) {
+  newPan  = clampFloat(newPan,  PAN_MIN,  PAN_MAX);
+  newTilt = clampFloat(newTilt, TILT_MIN, TILT_MAX);
+  float distance = fabs(newPan - panPos);
+  if (fabs(newTilt - tiltPos) > distance) distance = fabs(newTilt - tiltPos);
+  unsigned long duration = (unsigned long)(distance / SCAN_SPEED);
+  if (duration < 100) duration = 100;
+  slewServosTo(newPan, newTilt, duration, SCAN_SETTLE_MS);
+}
+
+// Clears everything the tracking logic remembers between updates.
+void resetTrackingState() {
+  tiltMoving = panMoving = false;
+  tiltOnHighSide = (tiltPos >= TILT_FLAT_ANGLE);
+  wrapArmed = true;
+  wrapPending = false;
+  lostPending = false;
+}
+
+// ============================================================================
+//  SCAN FOR THE LIGHT
+// ============================================================================
+//  Visits a grid of positions (4 tilt levels x 5 pan positions, plus flat),
+//  measures the total brightness at each one, then zooms in around the
+//  brightest spot. Afterwards the panel points roughly at the light, and
+//  normal tracking does the fine aiming. The grid measurements are also used
+//  to check the servo directions (see decideDirections).
+
+void scanForLight() {
+  Serial.println();
+  Serial.println(F("SCAN: looking for the light - hold the light still..."));
+
+  ScanSample grid[SCAN_ROWS][SCAN_COLS];
+  float rowTilt[SCAN_ROWS], colPan[SCAN_COLS];
+  for (int r = 0; r < SCAN_ROWS; r++) {
+    rowTilt[r] = clampFloat(TILT_FLAT_ANGLE + SCAN_TILT_OFFSETS[r], TILT_MIN, TILT_MAX);
+  }
+  for (int c = 0; c < SCAN_COLS; c++) {
+    colPan[c] = PAN_MIN + (float)(PAN_MAX - PAN_MIN) * c / (SCAN_COLS - 1);
+  }
+
+  float bestB = -1, bestPan = PAN_HOME, bestTilt = TILT_FLAT_ANGLE;
+  ScanSample sample;
+
+  // Coarse pass: flat first, then each tilt level, snaking back and forth.
+  measureAt(PAN_HOME, TILT_FLAT_ANGLE, sample, bestB, bestPan, bestTilt);
+  const int rowOrder[SCAN_ROWS] = {2, 3, 1, 0};
+  for (int k = 0; k < SCAN_ROWS; k++) {
+    int r = rowOrder[k];
+    for (int j = 0; j < SCAN_COLS; j++) {
+      int c = (k % 2 == 0) ? j : SCAN_COLS - 1 - j;
+      measureAt(colPan[c], rowTilt[r], grid[r][c], bestB, bestPan, bestTilt);
+    }
+  }
+
+  if (AUTO_DIRECTION_CHECK) {
+    decideDirections(grid, rowTilt);
+  }
+
+  // Fine passes: check around the best spot, closer each time.
+  const float zoom[2] = {15, 8};
+  for (int z = 0; z < 2; z++) {
+    float cp = bestPan, ct = bestTilt;
+    measureAt(cp + zoom[z], ct, sample, bestB, bestPan, bestTilt);
+    measureAt(cp - zoom[z], ct, sample, bestB, bestPan, bestTilt);
+    measureAt(cp, ct + zoom[z], sample, bestB, bestPan, bestTilt);
+    measureAt(cp, ct - zoom[z], sample, bestB, bestPan, bestTilt);
+  }
+
+  moveAtScanSpeed(bestPan, bestTilt);
+  Serial.print(F("SCAN: brightest at pan "));
+  Serial.print((int)(bestPan + 0.5));
+  Serial.print(F(", tilt "));
+  Serial.println((int)(bestTilt + 0.5));
+
+  readAllSensors(true);
+  scanBestBrightness = totalBrightness();
+  resetTrackingState();
+  lastScanEnd = millis();
+  Serial.println(F("Tracking..."));
+  Serial.println();
+}
+
+// Moves to one position, measures it, and remembers it if it's the
+// brightest so far.
+void measureAt(float pan, float tilt, ScanSample &sample,
+               float &bestB, float &bestPan, float &bestTilt) {
+  pan  = clampFloat(pan,  PAN_MIN,  PAN_MAX);
+  tilt = clampFloat(tilt, TILT_MIN, TILT_MAX);
+  moveAtScanSpeed(pan, tilt);
+  measureAveraged(sample.vert, sample.horiz, sample.total);
+  if (sample.total > bestB) {
+    bestB = sample.total;
+    bestPan = pan;
+    bestTilt = tilt;
+  }
+}
+
+// ============================================================================
+//  DIRECTION CHECK  (uses the scan grid)
+// ============================================================================
+//  Idea: at each scan position the sensors say which side the light is on.
+//  If the directions are set right, stepping that way in the grid should
+//  land on a BRIGHTER position. So for every pair of neighboring positions
+//  we check: did the side the sensors pointed to turn out brighter? Every
+//  pair "votes" (bright, clear pairs count more), and the total decides.
+
+void decideDirections(ScanSample grid[SCAN_ROWS][SCAN_COLS], const float *rowTilt) {
+  Serial.println(F("CHECK: which way is toward the light?"));
+
+  float darkest = grid[0][0].total, brightest = grid[0][0].total;
+  for (int r = 0; r < SCAN_ROWS; r++) {
+    for (int c = 0; c < SCAN_COLS; c++) {
+      if (grid[r][c].total < darkest)   darkest = grid[r][c].total;
+      if (grid[r][c].total > brightest) brightest = grid[r][c].total;
+    }
+  }
+  if (brightest < DIRECTION_MIN_CONTRAST * darkest) {
+    Serial.println(F("  light is too even to tell - keeping the current directions"));
+    return;
+  }
+
+  // --- Tilt: neighbors in the same column, B has the bigger tilt angle ---
+  // Normal tilt: a bigger angle tips the face toward the TOP sensors, so
+  // where the light is from the top (vert > 0), B should be brighter.
+  float tiltVote = 0, tiltSize = 0;
+  for (int c = 0; c < SCAN_COLS; c++) {
+    for (int r = 0; r + 1 < SCAN_ROWS; r++) {
+      if (rowTilt[r + 1] - rowTilt[r] < 1) continue;  // rows squashed by limits
+      ScanSample &A = grid[r][c], &B = grid[r + 1][c];
+      float vote = (B.total - A.total) * (A.vert + B.vert);
+      tiltVote += vote;
+      tiltSize += fabs(vote);
+    }
+  }
+
+  // --- Pan: neighbors in the same row, B has the bigger pan angle ---
+  // Normal pan, high side of flat: a bigger angle swings the face toward the
+  // LEFT sensors, so where the light is from the left (horiz > 0), B should
+  // be brighter. Mirrored on the other side of flat.
+  float panVote = 0, panSize = 0;
+  for (int r = 0; r < SCAN_ROWS; r++) {
+    if (fabs(rowTilt[r] - TILT_FLAT_ANGLE) < 10) continue;  // pan does little near flat
+    float side = (rowTilt[r] > TILT_FLAT_ANGLE) ? 1.0 : -1.0;
+    for (int c = 0; c + 1 < SCAN_COLS; c++) {
+      ScanSample &A = grid[r][c], &B = grid[r][c + 1];
+      float vote = side * (B.total - A.total) * (A.horiz + B.horiz);
+      panVote += vote;
+      panSize += fabs(vote);
+    }
+  }
+
+  if (tiltSize > 0 && fabs(tiltVote) / tiltSize >= DIRECTION_MIN_CONFIDENCE) {
+    tiltReversed = (tiltVote < 0);
+  }
+  printDirection(F("TILT"), tiltReversed, TILT_REVERSED, tiltVote, tiltSize);
+
+  if (panSize > 0 && fabs(panVote) / panSize >= DIRECTION_MIN_CONFIDENCE) {
+    panReversed = (panVote < 0);
+  }
+  printDirection(F("PAN "), panReversed, PAN_REVERSED, panVote, panSize);
+}
+
+void printDirection(const __FlashStringHelper *axis, bool reversed, bool setting,
+                    float vote, float size) {
+  int confidence = (size > 0) ? (int)(100 * fabs(vote) / size) : 0;
+  Serial.print(F("  "));
+  Serial.print(axis);
+  Serial.print(F(": "));
+  if (confidence < DIRECTION_MIN_CONFIDENCE * 100) {
+    Serial.print(F("can't tell (light too dim or too even), keeping "));
+    Serial.println(reversed ? F("reversed") : F("normal"));
+    return;
+  }
+  Serial.print(reversed ? F("reversed") : F("normal"));
+  Serial.print(F("  (sure: "));
+  Serial.print(confidence);
+  Serial.print(F("%)"));
+  Serial.println(reversed == setting ? F("") : F("  <- auto-corrected"));
 }
 
 void countdown() {
@@ -505,20 +796,64 @@ void countdown() {
 // ============================================================================
 //  SERIAL COMMANDS
 // ============================================================================
+//  Collects typed characters into a command and runs it on Enter (or after a
+//  short pause, in case the Serial Monitor isn't sending a line ending).
 
 void handleSerialCommands() {
   while (Serial.available() > 0) {
     char c = Serial.read();
-    if (c == 'c' || c == 'C') {
-      runCalibration();
-    } else if (c == 'd' || c == 'D') {
-      runDirectionTest();
-    } else if (c == 'r' || c == 'R') {
-      resetCalibration();
-      EEPROM.put(CAL_EEPROM_ADDR, cal);
-      Serial.println(F("Calibration reset (no correction)."));
-      readAllSensors(true);
+    if (c == '\r' || c == '\n') {
+      if (cmdLength > 0) runCommand();
+      continue;
     }
+    if (cmdLength < (uint8_t)(sizeof(cmdBuffer) - 1)) {
+      cmdBuffer[cmdLength++] = c;
+    }
+    lastCmdCharMs = millis();
+  }
+  if (cmdLength > 0 && millis() - lastCmdCharMs > 1500) {
+    runCommand();
+  }
+}
+
+void runCommand() {
+  cmdBuffer[cmdLength] = '\0';
+  cmdLength = 0;
+  char letter = tolower(cmdBuffer[0]);
+  int number = atoi(cmdBuffer + 1);
+
+  if (letter == 'h') {
+    manualMode = true;
+    Serial.println(F("HOME: moving to the middle. Tracking paused - type g to resume."));
+    moveAtScanSpeed(PAN_HOME, TILT_HOME);
+  } else if (letter == 'p' || letter == 't') {
+    manualMode = true;
+    float limitLow  = (letter == 'p') ? PAN_MIN : TILT_MIN;
+    float limitHigh = (letter == 'p') ? PAN_MAX : TILT_MAX;
+    // Manual moves may go past the limits on purpose (to find them), but
+    // never past what a servo can do.
+    float target = clampFloat(number, 0, 180);
+    Serial.print(letter == 'p' ? F("PAN") : F("TILT"));
+    Serial.print(F(" -> "));
+    Serial.print((int)target);
+    if (target < limitLow || target > limitHigh) {
+      Serial.print(F("  (outside the limits in the code - careful!)"));
+    }
+    Serial.println(F("   Tracking paused - type g to resume."));
+    if (letter == 'p') moveAtScanSpeed(target, tiltPos);
+    else               moveAtScanSpeed(panPos, target);
+  } else if (letter == 'g' || letter == 'd') {
+    manualMode = false;
+    scanForLight();
+  } else if (letter == 'c') {
+    runCalibration();
+  } else if (letter == 'r') {
+    resetCalibration();
+    EEPROM.put(CAL_EEPROM_ADDR, cal);
+    Serial.println(F("Calibration reset (no correction)."));
+    readAllSensors(true);
+  } else {
+    Serial.println(F("Commands: h  p90  t45  g  c  r"));
   }
 }
 
@@ -588,7 +923,9 @@ void runCalibration() {
   EEPROM.put(CAL_EEPROM_ADDR, cal);
   Serial.println(F("Calibration saved! (It stays saved after power-off.)"));
   printCalibration();
+  Serial.println(F("Remove the paper, then type g to scan and track."));
   Serial.println();
+  manualMode = true;   // wait for g so it doesn't track the paper
   readAllSensors(true);
 }
 
@@ -601,86 +938,6 @@ void printCalibration() {
   Serial.print((int)(cal.gain[2] * 100 + 0.5));
   Serial.print(F("  BR "));
   Serial.println((int)(cal.gain[3] * 100 + 0.5));
-}
-
-// ============================================================================
-//  DIRECTION TEST
-// ============================================================================
-//  Nudges each servo a little both ways and watches what happens to the
-//  shadows. Moving the right way makes the error go DOWN, whichever side the
-//  light is on, so this works no matter where exactly the light is held.
-
-void runDirectionTest() {
-  Serial.println();
-  Serial.println(F("=== DIRECTION TEST ==="));
-
-  // Test pose: plate tilted 45 degrees to the high side of flat, pan centered
-  // with room to move both ways.
-  float posePan  = clampFloat(PAN_HOME, PAN_MIN + DIRTEST_PAN_MOVE, PAN_MAX - DIRTEST_PAN_MOVE);
-  float poseTilt = clampFloat(TILT_FLAT_ANGLE + 45, TILT_MIN + DIRTEST_TILT_MOVE, TILT_MAX - DIRTEST_TILT_MOVE);
-  slewServosTo(posePan, poseTilt, 1500);
-
-  Serial.println(F("The panel is now tilted to one side. Hold the flashlight"));
-  Serial.println(F("STEADY 1-2 feet away, shining STRAIGHT AT THE PANEL FACE"));
-  Serial.println(F("(from the direction it's pointing). Don't follow the panel"));
-  Serial.println(F("when it moves - keep the light still until it says DONE."));
-  countdown();
-
-  float vMinus, vPlus, hMinus, hPlus, unused;
-
-  // --- Tilt ---
-  slewServosTo(posePan, poseTilt - DIRTEST_TILT_MOVE, 600);
-  measureAveragedErrors(vMinus, unused);
-  slewServosTo(posePan, poseTilt + DIRTEST_TILT_MOVE, 1200);
-  measureAveragedErrors(vPlus, unused);
-  slewServosTo(posePan, poseTilt, 600);
-
-  // --- Pan ---
-  slewServosTo(posePan - DIRTEST_PAN_MOVE, poseTilt, 600);
-  measureAveragedErrors(unused, hMinus);
-  slewServosTo(posePan + DIRTEST_PAN_MOVE, poseTilt, 1200);
-  measureAveragedErrors(unused, hPlus);
-  slewServosTo(posePan, poseTilt, 600);
-
-  Serial.println(F("DONE. Results:"));
-
-  // Tilt: if a bigger angle tips the face toward the TOP sensors, the
-  // top-minus-bottom error must DROP as the angle goes up.
-  float tiltChange = vPlus - vMinus;
-  Serial.print(F("  TILT (error change "));
-  Serial.print((int)(tiltChange * 100));
-  Serial.print(F("%): "));
-  if (fabs(tiltChange) < DIRTEST_MIN_CHANGE) {
-    Serial.println(F("can't tell - aim the light straight at the panel, closer, and retry."));
-  } else {
-    bool shouldBeReversed = (tiltChange > 0);
-    Serial.print(F("set  TILT_REVERSED = "));
-    Serial.print(shouldBeReversed ? F("true") : F("false"));
-    Serial.println(shouldBeReversed == TILT_REVERSED ? F("   (already correct)")
-                                                     : F("   <-- CHANGE THIS and re-upload"));
-  }
-
-  // Pan: on the high side of flat, if a bigger angle swings the face toward
-  // the LEFT sensors, the left-minus-right error must DROP as the angle goes up.
-  float panChange = hPlus - hMinus;
-  if (poseTilt < TILT_FLAT_ANGLE) panChange = -panChange;  // other side of flat
-  Serial.print(F("  PAN  (error change "));
-  Serial.print((int)(panChange * 100));
-  Serial.print(F("%): "));
-  if (fabs(panChange) < DIRTEST_MIN_CHANGE) {
-    Serial.println(F("can't tell - aim the light straight at the panel, closer, and retry."));
-  } else {
-    bool shouldBeReversed = (panChange > 0);
-    Serial.print(F("set  PAN_REVERSED  = "));
-    Serial.print(shouldBeReversed ? F("true") : F("false"));
-    Serial.println(shouldBeReversed == PAN_REVERSED ? F("   (already correct)")
-                                                    : F("   <-- CHANGE THIS and re-upload"));
-  }
-  Serial.println();
-
-  tiltOnHighSide = (tiltPos >= TILT_FLAT_ANGLE);
-  tiltMoving = panMoving = false;
-  readAllSensors(true);
 }
 
 // ============================================================================
@@ -715,5 +972,9 @@ void printDebug(float vertError, float horizError, const char *status) {
   if (centered) Serial.print(F("CENTER"));
 
   Serial.print(F(" | pan:"));  Serial.print((int)(panPos + 0.5));
-  Serial.print(F(" tilt:"));   Serial.println((int)(tiltPos + 0.5));
+  Serial.print(F(" tilt:"));   Serial.print((int)(tiltPos + 0.5));
+  if (panPos <= PAN_MIN || panPos >= PAN_MAX || tiltPos <= TILT_MIN || tiltPos >= TILT_MAX) {
+    Serial.print(F(" (at limit)"));
+  }
+  Serial.println();
 }
