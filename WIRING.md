@@ -5,248 +5,237 @@ This matches the pins in the code (`src/main.cpp` / `SolarTracker.ino`).
 
 ---
 
-## Step 0: Set up the breadboard the right way
+## Our photoresistor wire colors
 
-1. **Stand the breadboard up vertically** (long way up and down) with **row 1 at the top**. The row numbers now count **downward**.
-2. You'll see **two power rails running down the left edge** and two down the right edge. **We only use the two LEFT rails.** The right rails stay empty.
-3. The two left rails have printed lines: **red line = `+` (5V)**, **blue/black line = `−` (GND)**. Which one is on the outside depends on the brand, so **always go by the color, not the position.**
-4. Look at the letters printed across the top of the board:
-   - **Column `a` is on the left (next to the left rails):** perfect, follow this guide exactly.
-   - **Column `j` is on the left instead:** your board is labeled the other way. Everything still works; just swap the letters in every instruction:
+Each photoresistor has **two wires of the same color**. They're interchangeable because photoresistors have no + or − side.
 
-     | Guide says | You use |
-     |-----------|---------|
-     | **a** | **j** |
-     | **c** | **h** |
-     | **e** | **f** |
-
-5. Set the **Arduino just above or to the left of the top of the breadboard**, near row 1, so the power and sensor jumpers are short.
-
-> In every row, the 5 holes on the left side of the center groove are connected together. The 5 holes on the right side are connected together too, but separately. This guide only uses the **left 5 holes (a–e)** of each row, right next to the left rails.
+| Sensor (position on the tracker) | Wire color | Breadboard rows | Arduino pin |
+|----------------------------------|-----------|-----------------|-------------|
+| **Top-Left**     | **Yellow** | 3–4   | A0 |
+| **Top-Right**    | **Red**    | 6–7   | A1 |
+| **Bottom-Left**  | **Blue**   | 9–10  | A2 |
+| **Bottom-Right** | **Green**  | 12–13 | A3 |
 
 ---
 
-## The idea: every column and every row block has one job
+## Do the photoresistor wires need an extra jumper?
 
-| Column | Job |
-|--------|-----|
-| **a** (closest to the left rails) | Short connections to the **left power rails** (jumpers and resistors) |
-| **c** (middle) | Jumpers that go to the **Arduino** (signal wires) |
-| **e** (next to the center groove) | **Cables that go up to the tracker** (LDR wires, servo plugs) |
+**No.** The bare end of each photoresistor wire plugs **straight into its breadboard hole**. You only need to prep the ends:
 
-| Rows | Job |
-|------|-----|
-| 1 | Power coming in from the Arduino |
-| 3–4 | Top-Left sensor |
-| 6–7 | Top-Right sensor |
-| 9–10 | Bottom-Left sensor |
-| 12–13 | Bottom-Right sensor |
-| 17–19 | Pan servo |
-| 20 | Capacitor (on the left rails) |
-| 21–23 | Tilt servo |
-| 24–30 | Empty, free for anything you add later |
+1. Strip about **¼ inch (6 mm)** of insulation off the free end of each wire.
+2. Check whether the wire is **solid core** (one stiff metal strand) or **stranded** (many thin strands):
+   - **Solid core:** ready to go; push it straight into the hole.
+   - **Stranded:** twist the strands tightly, then **tin** them (melt a little solder into the twisted strands) so the end is stiff like a pin. Do this away from the breadboard, and never solder onto the breadboard itself.
+3. Only if a wire is **too thick to fit** in the hole, or too floppy even after tinning: cut a male-to-male jumper in half, solder the wire to the jumper's cut end, and cover the joint with heat-shrink or electrical tape. Then plug the jumper's pin into the hole instead.
+
+---
+
+## Jumper colors (so nothing gets confused with the sensor wires)
+
+The rule is that **a jumper's color tells you what it carries**:
+
+| Jumper color | Carries | How many |
+|--------------|---------|----------|
+| **White** | 5V | 7 |
+| **Black** | GND | 3 |
+| **Yellow** | Top-Left signal → A0 (matches the yellow sensor) | 1 |
+| **Red** | Top-Right signal → A1 (matches the red sensor) | 1 |
+| **Blue** | Bottom-Left signal → A2 (matches the blue sensor) | 1 |
+| **Green** | Bottom-Right signal → A3 (matches the green sensor) | 1 |
+| **Orange** | Servo signals → pins 9 and 10 (matches the servos' orange wire) | 2 |
+| any color | Servo "docking ports" (3 per servo, see Step 4) | 6 |
+
+> Short on white? Gray or purple works too. Just use the **same** color for every 5V jumper, and don't use red/yellow/blue/green for 5V.
+
+All jumpers are **male-to-male**. The Arduino's pin headers are sockets, so a jumper end pushes straight into them.
+
+---
+
+## Step 0: Set up the breadboard
+
+1. **Stand the breadboard up vertically** with **row 1 at the top**. Row numbers count **downward**.
+2. We only use the **two power rails on the LEFT edge**. The right rails stay empty.
+3. Go by the printed color, not position: **red line = `+` (5V)**, **blue/black line = `−` (GND)**.
+4. Look at the letters across the top:
+   - **Column `a` is on the left** (next to the left rails): follow this guide exactly.
+   - **Column `j` is on the left**: swap letters everywhere: **a → j, c → h, e → f**.
+5. Put the Arduino just above or beside the top-left corner of the breadboard.
+
+**One job per column:**
+- **a** (next to the left rails): connections to the rails
+- **c** (middle): jumpers to the Arduino
+- **e** (next to the center groove): cables that go up to the tracker
+
+"Rail beside row 4" = the left-rail hole closest to row 4. Rail holes come in groups of 5 with small gaps, so just use the nearest one.
 
 ---
 
 ## Layout map
 
-This is the top of your breadboard exactly as you see it standing up: **left rails on the left, row 1 at the top.**
-`───` = jumper wire, `~~~` = 10 kΩ resistor, `●` = a hole that's used.
-"Rail beside row 4" means the left-rail hole closest to row 4. Rail holes come in groups of 5 with small gaps, so just use the nearest one.
+Exactly as you see it with the board standing up (row 1 at top, left rails on the left).
 
 ```
-          LEFT RAILS      │
- Row      −       +       │   a              c                 e    ┃ groove ┃  f–j + right rails: unused
- ─────────────────────────┼─────────────────────────────────────────
-  1     [GND]   [5V]      │                                            ◄ from Arduino GND / 5V
-  2                       │
-  3              ●────────┼── ●                                 ●     ◄ TL LDR wire 1
-  4      ●~~~~~~~~~~~~~~~~┼~~ ●              ● ──► A0           ●     ◄ TL LDR wire 2
-  5                       │
-  6              ●────────┼── ●                                 ●     ◄ TR LDR wire 1
-  7      ●~~~~~~~~~~~~~~~~┼~~ ●              ● ──► A1           ●     ◄ TR LDR wire 2
-  8                       │
-  9              ●────────┼── ●                                 ●     ◄ BL LDR wire 1
- 10      ●~~~~~~~~~~~~~~~~┼~~ ●              ● ──► A2           ●     ◄ BL LDR wire 2
- 11                       │
- 12              ●────────┼── ●                                 ●     ◄ BR LDR wire 1
- 13      ●~~~~~~~~~~~~~~~~┼~~ ●              ● ──► A3           ●     ◄ BR LDR wire 2
- 14-16                    │                (empty)
- 17      ●────────────────┼── ●                                 ●     ◄ PAN servo brown
- 18              ●────────┼── ●                                 ●     ◄ PAN servo red
- 19                       │                  ● ──► pin 9        ●     ◄ PAN servo orange
- 20    [cap −] [cap +]    │
- 21      ●────────────────┼── ●                                 ●     ◄ TILT servo brown
- 22              ●────────┼── ●                                 ●     ◄ TILT servo red
- 23                       │                  ● ──► pin 10       ●     ◄ TILT servo orange
- 24-30                    │                (empty: room to grow)
+          LEFT RAILS     │
+ Row      −       +      │   a                c                    e
+ ────────────────────────┼──────────────────────────────────────────────────────
+  1    [BLACK] [WHITE]   │                                              ◄ from Arduino GND / 5V
+  2                      │
+  3              ●═══════╪══ ● (white)                            ●    ◄ YELLOW sensor wire
+  4      ●~~~~~~~~~~~~~~~╪~~ ● (10k)        ● YELLOW jumper → A0   ●    ◄ YELLOW sensor wire
+  5                      │
+  6              ●═══════╪══ ● (white)                            ●    ◄ RED sensor wire
+  7      ●~~~~~~~~~~~~~~~╪~~ ● (10k)        ● RED jumper → A1      ●    ◄ RED sensor wire
+  8                      │
+  9              ●═══════╪══ ● (white)                            ●    ◄ BLUE sensor wire
+ 10      ●~~~~~~~~~~~~~~~╪~~ ● (10k)        ● BLUE jumper → A2     ●    ◄ BLUE sensor wire
+ 11                      │
+ 12              ●═══════╪══ ● (white)                            ●    ◄ GREEN sensor wire
+ 13      ●~~~~~~~~~~~~~~~╪~~ ● (10k)        ● GREEN jumper → A3    ●    ◄ GREEN sensor wire
+ 14-16                   │                (empty)
+ 17      ●───────────────┼── ● (black)                            ●    ◄ PAN servo brown
+ 18              ●═══════╪══ ● (white)                            ●    ◄ PAN servo red
+ 19                      │                  ● ORANGE jumper → 9    ●    ◄ PAN servo orange
+ 20    [cap −] [cap +]   │
+ 21      ●───────────────┼── ● (black)                            ●    ◄ TILT servo brown
+ 22              ●═══════╪══ ● (white)                            ●    ◄ TILT servo red
+ 23                      │                  ● ORANGE jumper → 10   ●    ◄ TILT servo orange
+ 24-30                   │                (empty: room to grow)
 ```
 
-(The map draws `−` on the outside and `+` on the inside. If your board is the other way around, that's fine: just match the colors.)
-
-Each sensor block is a voltage divider: **left `+` rail → upper row → LDR → lower row → 10 kΩ → left `−` rail**, with the lower row jumped to an analog pin. More light gives a higher reading, which is what the code expects.
-
----
-
-## Suggested jumper colors
-
-| Color | Used for |
-|-------|----------|
-| **Red** | anything at 5V |
-| **Black** (or brown) | anything at GND |
-| **Yellow** | sensor signals to A0–A3 |
-| **Orange** (or white) | servo signals to pins 9 and 10 |
-
-Use the **shortest jumper that reaches** and lay it flat. Bend resistor legs so each resistor lies flat from column a over to the left rail.
+`═══` white 5V jumper, `───` black GND jumper, `~~~` 10 kΩ resistor.
+(The map draws `−` on the outside and `+` on the inside; if your board is the other way around, just match the colors.)
 
 ---
 
-## Step 1: Power from the Arduino (row 1)
+## Step 1: Power from the Arduino
 
-| # | From (Arduino) | To (breadboard) | Jumper |
-|---|----------------|-----------------|--------|
-| 1 | **5V** pin (POWER header) | **left red `+` rail**, hole beside row 1 | red |
-| 2 | **GND** pin (next to 5V) | **left blue `−` rail**, hole beside row 1 | black |
-
-> Use **5V**, not 3.3V or VIN.
+| # | Wire | End 1 | End 2 |
+|---|------|-------|-------|
+| 1 | **white** jumper | Arduino **5V** socket (POWER header) | **left red `+` rail**, beside row 1 |
+| 2 | **black** jumper | Arduino **GND** socket (right next to 5V) | **left blue `−` rail**, beside row 1 |
 
 ---
 
-## Step 2: Sensor blocks (rows 3–13)
-
-Do one block at a time. **All four blocks are identical**, just shifted down by 3 rows each.
+## Step 2: Sensor blocks
 
 10 kΩ color bands: **brown-black-orange-gold** (4-band) or **brown-black-black-red-brown** (5-band). Resistors have no direction.
 
-### Top-Left sensor (rows 3–4)
+### Top-Left: YELLOW (rows 3–4)
 
-| # | Part | Hole | Other end |
-|---|------|------|-----------|
-| 3 | red jumper | **a3** | left `+` rail beside row 3 |
-| 4 | 10 kΩ resistor | **a4** | left `−` rail beside row 4 |
-| 5 | yellow jumper | **c4** | Arduino **A0** |
-| 6 | TL LDR wire 1 | **e3** | goes up to the tracker |
-| 7 | TL LDR wire 2 | **e4** | goes up to the tracker |
+| # | Wire / part | End 1 | End 2 |
+|---|-------------|-------|-------|
+| 3 | **white** jumper | **a3** | left red `+` rail, beside row 3 |
+| 4 | 10 kΩ resistor | **a4** | left blue `−` rail, beside row 4 |
+| 5 | **yellow** jumper | **c4** | Arduino **A0** |
+| 6 | **yellow** sensor wire #1 | **e3** | (soldered to the photoresistor) |
+| 7 | **yellow** sensor wire #2 | **e4** | (soldered to the photoresistor) |
 
-### Top-Right sensor (rows 6–7)
+### Top-Right: RED (rows 6–7)
 
-| # | Part | Hole | Other end |
-|---|------|------|-----------|
-| 8  | red jumper | **a6** | left `+` rail beside row 6 |
-| 9  | 10 kΩ resistor | **a7** | left `−` rail beside row 7 |
-| 10 | yellow jumper | **c7** | Arduino **A1** |
-| 11 | TR LDR wire 1 | **e6** | tracker |
-| 12 | TR LDR wire 2 | **e7** | tracker |
+| # | Wire / part | End 1 | End 2 |
+|---|-------------|-------|-------|
+| 8  | **white** jumper | **a6** | left red `+` rail, beside row 6 |
+| 9  | 10 kΩ resistor | **a7** | left blue `−` rail, beside row 7 |
+| 10 | **red** jumper | **c7** | Arduino **A1** |
+| 11 | **red** sensor wire #1 | **e6** | (photoresistor) |
+| 12 | **red** sensor wire #2 | **e7** | (photoresistor) |
 
-### Bottom-Left sensor (rows 9–10)
+### Bottom-Left: BLUE (rows 9–10)
 
-| # | Part | Hole | Other end |
-|---|------|------|-----------|
-| 13 | red jumper | **a9** | left `+` rail beside row 9 |
-| 14 | 10 kΩ resistor | **a10** | left `−` rail beside row 10 |
-| 15 | yellow jumper | **c10** | Arduino **A2** |
-| 16 | BL LDR wire 1 | **e9** | tracker |
-| 17 | BL LDR wire 2 | **e10** | tracker |
+| # | Wire / part | End 1 | End 2 |
+|---|-------------|-------|-------|
+| 13 | **white** jumper | **a9** | left red `+` rail, beside row 9 |
+| 14 | 10 kΩ resistor | **a10** | left blue `−` rail, beside row 10 |
+| 15 | **blue** jumper | **c10** | Arduino **A2** |
+| 16 | **blue** sensor wire #1 | **e9** | (photoresistor) |
+| 17 | **blue** sensor wire #2 | **e10** | (photoresistor) |
 
-### Bottom-Right sensor (rows 12–13)
+### Bottom-Right: GREEN (rows 12–13)
 
-| # | Part | Hole | Other end |
-|---|------|------|-----------|
-| 18 | red jumper | **a12** | left `+` rail beside row 12 |
-| 19 | 10 kΩ resistor | **a13** | left `−` rail beside row 13 |
-| 20 | yellow jumper | **c13** | Arduino **A3** |
-| 21 | BR LDR wire 1 | **e12** | tracker |
-| 22 | BR LDR wire 2 | **e13** | tracker |
+| # | Wire / part | End 1 | End 2 |
+|---|-------------|-------|-------|
+| 18 | **white** jumper | **a12** | left red `+` rail, beside row 12 |
+| 19 | 10 kΩ resistor | **a13** | left blue `−` rail, beside row 13 |
+| 20 | **green** jumper | **c13** | Arduino **A3** |
+| 21 | **green** sensor wire #1 | **e12** | (photoresistor) |
+| 22 | **green** sensor wire #2 | **e13** | (photoresistor) |
 
-> Photoresistors have **no polarity**: either of an LDR's two wires can be "wire 1".
-> Just keep **both wires of one LDR in its own block**. Never split one LDR across two blocks.
->
-> "Top/Bottom" must be on opposite sides of the tilt axis, and "Left/Right" on opposite sides of the line across it. See *Sensor placement* in `README.md`. (These are positions on the **tracker**, not on the breadboard.)
+> Both wires of a sensor are the same color and interchangeable; it doesn't matter which one is "#1".
+> The only rule: **both wires of a color go in that color's block.**
 
-**Wire colors (fill in so your team knows which cable is which):**
-
-| Sensor | Block rows | Wire colors |
-|--------|-----------|-------------|
-| Top-Left | 3–4 | ______ / ______ |
-| Top-Right | 6–7 | ______ / ______ |
-| Bottom-Left | 9–10 | ______ / ______ |
-| Bottom-Right | 12–13 | ______ / ______ |
+Each block is a voltage divider: **+ rail → white jumper → upper row → photoresistor → lower row → 10 kΩ → − rail**, with the lower row jumped to the analog pin. More light gives a higher reading.
 
 ---
 
-## Step 3: Servo blocks (rows 17–23)
+## Step 3: 100 µF capacitor (row 20)
 
-Each servo gets a 3-row **"docking port"**. Push 3 male-to-male jumpers into the servo's plug, then push those into column **e**, in order from top to bottom. The servo can later be unplugged and plugged back in without touching anything else.
+| # | Part | End 1 | End 2 |
+|---|------|-------|-------|
+| 23 | 100 µF capacitor | **long leg (+)** → left red `+` rail, beside row 20 | **short leg (−)**, stripe side → left blue `−` rail, beside row 20 |
 
-> Even neater: if your kit has a **male pin header strip**, snap off 3 pins, push them into e17–e19, and plug the servo straight onto them. Do the same for e21–e23.
+> ⚠️ This capacitor **has a direction**. Backwards, it can get hot or pop.
 
-Servo wire colors: **brown = GND**, **red = 5V**, **orange = signal** (some servos use black / red / yellow or white).
+---
 
-### Pan servo (base, turns the tracker clockwise/counterclockwise), rows 17–19
+## Step 4: Servos
 
-| # | Part | Hole | Other end |
-|---|------|------|-----------|
-| 23 | servo **brown** | **e17** | — |
-| 24 | servo **red** | **e18** | — |
-| 25 | servo **orange** | **e19** | — |
-| 26 | black jumper | **a17** | left `−` rail beside row 17 |
-| 27 | red jumper | **a18** | left `+` rail beside row 18 |
-| 28 | orange jumper | **c19** | Arduino digital pin **~9** |
+Each servo has a plug with 3 sockets: **brown (GND), red (5V), orange (signal)**.
+First make a **docking port**: push 3 male-to-male jumpers into the 3 sockets of the servo's plug. Then push the jumpers' other ends into the breadboard. To unplug the servo later, just pull the plug off its jumpers.
 
-### Tilt servo (tips the panel plate up/down), rows 21–23
+> Even neater: if your kit has a **male pin header strip**, snap off 3 pins, push them into e17–e19, and plug the servo straight onto them (same for e21–e23). Then skip the docking-port jumpers.
 
-| # | Part | Hole | Other end |
-|---|------|------|-----------|
-| 29 | servo **brown** | **e21** | — |
-| 30 | servo **red** | **e22** | — |
-| 31 | servo **orange** | **e23** | — |
-| 32 | black jumper | **a21** | left `−` rail beside row 21 |
-| 33 | red jumper | **a22** | left `+` rail beside row 22 |
-| 34 | orange jumper | **c23** | Arduino digital pin **~10** |
+### Pan servo (base, turns clockwise/counterclockwise), rows 17–19
+
+| # | Wire | End 1 | End 2 |
+|---|------|-------|-------|
+| 24 | docking jumper | servo plug **brown** socket | **e17** |
+| 25 | docking jumper | servo plug **red** socket | **e18** |
+| 26 | docking jumper | servo plug **orange** socket | **e19** |
+| 27 | **black** jumper | **a17** | left blue `−` rail, beside row 17 |
+| 28 | **white** jumper | **a18** | left red `+` rail, beside row 18 |
+| 29 | **orange** jumper | **c19** | Arduino digital **~9** |
+
+### Tilt servo (tips the panel plate), rows 21–23
+
+| # | Wire | End 1 | End 2 |
+|---|------|-------|-------|
+| 30 | docking jumper | servo plug **brown** socket | **e21** |
+| 31 | docking jumper | servo plug **red** socket | **e22** |
+| 32 | docking jumper | servo plug **orange** socket | **e23** |
+| 33 | **black** jumper | **a21** | left blue `−` rail, beside row 21 |
+| 34 | **white** jumper | **a22** | left red `+` rail, beside row 22 |
+| 35 | **orange** jumper | **c23** | Arduino digital **~10** |
 
 > Pins 9 and 10 are on the **"DIGITAL (PWM~)"** header, marked with a `~`.
 
 ---
 
-## Step 4: 100 µF capacitor (row 20, between the servos)
-
-This keeps servo power steady so the Arduino doesn't reset when both servos move.
-
-| # | Capacitor leg | Hole |
-|---|---------------|------|
-| 35 | **long leg (+)** | **left red `+` rail** beside row 20 |
-| 36 | **short leg (−)**, the stripe side | **left blue `−` rail** beside row 20 |
-
-> ⚠️ This capacitor **has a direction**: long leg to **red +**, stripe to **blue −**. Backwards, it can get hot or pop.
-
----
-
 ## Step 5: Cable management
 
-The tracker moves, so loose cables snag and pull out. To prevent that:
-
-1. **Label each cable** near its breadboard end with a small masking-tape flag: `TL`, `TR`, `BL`, `BR`, `PAN`, `TILT`.
-2. **Twist each LDR's two wires together** loosely, so each sensor is one tidy cable.
-3. All the tracker cables come out of **column e**, so they leave the board in one neat line down the center groove. **Bundle** all six (4 sensors + 2 servos) with tape, twist ties or zip ties every few inches.
+1. Your sensor cables are already color-coded. Add masking-tape flags to the servo cables: `PAN`, `TILT`.
+2. Twist each sensor's two same-color wires loosely together, so each sensor is one cable.
+3. Every tracker cable comes out of **column e**, in one straight line. **Bundle** them with tape or zip ties every few inches.
 4. **Leave slack.** Before tying anything down, move the tracker by hand through its **full** pan and tilt range and make sure nothing pulls tight.
-5. **Route cables close to the pan axis** (the center of rotation), so they twist a little instead of swinging around.
-6. **Fix the boards down.** The breadboard has a sticky back; stick it (vertical, row 1 at the top) and the Arduino near its top-left corner onto a piece of cardboard or foam board.
+5. Route cables close to the **pan axis** (center of rotation).
+6. Stick the breadboard (vertical, row 1 at top) and the Arduino near its top-left corner onto cardboard or foam board.
 
 ---
 
 ## Step 6: Check before plugging in USB
 
-- [ ] Arduino **5V → left red `+` rail**, **GND → left blue `−` rail** (not swapped!)
-- [ ] Nothing is plugged into the **right** rails or columns **f–j**
-- [ ] Column **a**: only red jumpers, black jumpers and resistors going to the left rails
-- [ ] Column **c**: only jumpers going to the Arduino (A0, A1, A2, A3, 9, 10)
-- [ ] Column **e**: only the tracker's cables (8 LDR wires, 2 servo plugs)
-- [ ] In each sensor block: the **upper** row has the red jumper and the **lower** row has the resistor plus the yellow jumper
-- [ ] Both wires of each LDR are in **its own** block
-- [ ] Servo plugs go **brown, red, orange** from top to bottom (e17–e19 and e21–e23)
-- [ ] Capacitor long leg on **red +**
+- [ ] **White** jumper from Arduino **5V** → left **red** rail; **black** from Arduino **GND** → left **blue** rail
+- [ ] Nothing in the **right** rails or columns **f–j**
+- [ ] Rows 3–4 = both **yellow** wires + yellow jumper to **A0**
+- [ ] Rows 6–7 = both **red** wires + red jumper to **A1**
+- [ ] Rows 9–10 = both **blue** wires + blue jumper to **A2**
+- [ ] Rows 12–13 = both **green** wires + green jumper to **A3**
+- [ ] In each sensor block: the **white** jumper is in the **upper** row; the **resistor** and **colored** jumper are in the **lower** row
+- [ ] Servo plugs go **brown, red, orange** from top to bottom
+- [ ] **Orange** jumpers: row 19 → pin **9**, row 23 → pin **10**
+- [ ] Capacitor long leg on the **red** rail
 
-Then plug in USB and run the **Sensor test** in `README.md` (`SENSOR_TEST_MODE = true`). Covering each sensor should make only its own number drop.
+Then plug in USB and run the **Sensor test** in `README.md` (`SENSOR_TEST_MODE = true`):
+cover the **yellow** sensor and `TL` should drop, cover **red** and `TR` should drop, **blue** → `BL`, **green** → `BR`.
 
 ---
 
@@ -256,9 +245,10 @@ Then plug in USB and run the **Sensor test** in `README.md` (`SENSOR_TEST_MODE =
 |---------|-----------------------|
 | Nothing works at all | 5V/GND went to the right rails, or the board is upside down (row 1 must be at the top) |
 | A sensor always reads ~1023 | That block's resistor isn't reaching the left `−` rail |
-| A sensor always reads ~0 | That block's red jumper isn't reaching the left `+` rail, or an LDR wire is loose in column e |
-| A sensor reads random, jumpy numbers | Its yellow jumper is loose or in the wrong row (it must be in the **lower** row of the block) |
-| Covering one sensor changes a different number | LDR cables are in the wrong blocks; check your tape labels |
-| Readings go **down** with more light | Red jumper and resistor swapped (red jumper belongs in the upper row) |
+| A sensor always reads ~0 | That block's white jumper isn't reaching the left `+` rail, or a sensor wire end is loose in column e |
+| A sensor reads random, jumpy numbers | Its colored jumper is loose or in the wrong row (it must be in the **lower** row) |
+| Covering one sensor changes a different number | Sensor wires are in the wrong color's block |
+| Readings go **down** with more light | White jumper and resistor swapped (white belongs in the upper row) |
+| A sensor wire keeps falling out | Its end is stranded or too short; strip ¼ inch and tin it |
 | Servo doesn't move at all | Plug is in the wrong order, or the orange jumper isn't on the right pin |
-| Servo twitches or Arduino resets when moving | Add/check the capacitor; if it still happens, power the servos from a separate 5V supply with its GND tied to the left `−` rail |
+| Servo twitches or Arduino resets when moving | Check the capacitor; if it still happens, power the servos from a separate 5V supply with its GND tied to the left `−` rail |

@@ -51,12 +51,12 @@ Each LDR is half of a **voltage divider**. Wire all four the same way:
 
 With this wiring, **more light gives a bigger reading** (0–1023), which is what the code expects. If you wire one with the LDR and resistor swapped, that sensor reads backwards. See the sensor test below.
 
-| Sensor position | Arduino pin | Wire color (fill in) |
-|-----------------|-------------|----------------------|
-| Top-Left        | **A0**      |                      |
-| Top-Right       | **A1**      |                      |
-| Bottom-Left     | **A2**      |                      |
-| Bottom-Right    | **A3**      |                      |
+| Sensor position | Arduino pin | Wire color |
+|-----------------|-------------|------------|
+| Top-Left        | **A0**      | Yellow     |
+| Top-Right       | **A1**      | Red        |
+| Bottom-Left     | **A2**      | Blue       |
+| Bottom-Right    | **A3**      | Green      |
 
 ### Servos
 
