@@ -121,7 +121,8 @@ const bool  SCAN_ON_STARTUP = true;
 const int   SCAN_ROWS = 4;              // tilt levels, as offsets from flat:
 const float SCAN_TILT_OFFSETS[SCAN_ROWS] = {-60, -30, 30, 60};
 const int   SCAN_COLS = 5;              // pan positions per tilt level
-const float SCAN_SPEED = 0.2;           // degrees per millisecond while scanning
+const float SCAN_SPEED = 0.12;          // degrees per millisecond while scanning
+                                        // (slower = gentler on USB power)
 const unsigned long SCAN_SETTLE_MS = 200;  // wait for wobble before measuring
 
 // The direction check has to be at least this sure (0 - 1) before it changes
@@ -131,12 +132,12 @@ const float DIRECTION_MIN_CONFIDENCE = 0.3;
 // brighter than the darkest one (otherwise the light is too even to tell).
 const float DIRECTION_MIN_CONTRAST = 1.5;
 
-// "Lost the light": total brightness has stayed below this fraction of what
-// the last scan found, for LOST_TIME_MS. Then it scans again (but not more
-// often than RESCAN_COOLDOWN_MS).
-const float LOST_FRACTION      = 0.30;
-const unsigned long LOST_TIME_MS       = 3000;
-const unsigned long RESCAN_COOLDOWN_MS = 10000;
+// "Lost the light": the average raw reading has stayed below this fraction
+// of what it was right after the last scan, for LOST_TIME_MS. Then it scans
+// again (but not more often than RESCAN_COOLDOWN_MS).
+const float LOST_FRACTION      = 0.50;
+const unsigned long LOST_TIME_MS       = 5000;
+const unsigned long RESCAN_COOLDOWN_MS = 20000;
 
 // ============================================================================
 //  PAN "WRAP-AROUND"  (reaching light that's behind the pan end stops)
@@ -215,10 +216,13 @@ const bool SERVO_CENTER_MODE = false;
 
 const unsigned long COUNTDOWN_MS   = 5000;  // time to get the light set up
 const unsigned long CAL_MEASURE_MS = 2000;  // time spent measuring
-const float CAL_MIN_GAIN = 0.4;  // reject calibration if a sensor needs more
-const float CAL_MAX_GAIN = 2.5;  // correction than this (probably shaded/broken)
+const float CAL_MIN_GAIN = 0.1;  // corrections are allowed from 0.1x to 10x
+const float CAL_MAX_GAIN = 10.0;
+const float CAL_WARN_GAIN = 3.0; // bigger than this (or below 1/this): print a warning
+const int   CAL_DEAD_RAW  = 20;    // a sensor reading below this is dead/unplugged
+const int   CAL_MAXED_RAW = 1005;  // above this a sensor is maxed out (light too bright)
 const int   CAL_EEPROM_ADDR = 0;
-const uint16_t CAL_MAGIC = 0x5A18;  // marks the EEPROM data as valid
+const uint16_t CAL_MAGIC = 0x5A19;  // marks the EEPROM data as valid
 
 // ============================================================================
 //  GLOBALS
@@ -271,7 +275,7 @@ bool wrapPending = false;
 unsigned long wrapPendingSince = 0;
 float wrapLandingPos = 0;
 
-float scanBestBrightness = 0;  // total brightness found by the last scan
+float scanBestRaw = 0;         // average raw reading right after the last scan
 bool lostPending = false;
 unsigned long lostSince = 0;
 unsigned long lastScanEnd = 0;
@@ -286,7 +290,6 @@ unsigned long lastDebugPrint = 0;
 float readLdrRaw(uint8_t pin);
 float brightnessFromRaw(float rawValue);
 void  readAllSensors(bool resetSmoothing);
-float totalBrightness();
 void  computeErrors(const float *b, float &vertError, float &horizError);
 void  measureAveraged(float &vertError, float &horizError, float &total);
 float clampFloat(float value, float low, float high);
@@ -324,7 +327,7 @@ void setup() {
   tiltReversed = TILT_REVERSED;
   panReversed  = PAN_REVERSED;
   manualMode = false;
-  scanBestBrightness = 0;
+  scanBestRaw = 0;
   cmdLength = 0;
   resetTrackingState();
 
@@ -400,14 +403,20 @@ void loop() {
     return;
   }
 
-  // ---- 4. Lost the light? (much darker than what the scan found) ----
-  if (scanBestBrightness > 0 && totalBrightness() < LOST_FRACTION * scanBestBrightness) {
+  // ---- 4. Lost the light? (much darker than right after the scan) ----
+  // Uses the plain 0 - 1023 readings, which stay steady even when the
+  // sensors are bright (the brightness conversion gets jumpy near 1023).
+  if (scanBestRaw > 0 && smoothedRawAvg < LOST_FRACTION * scanBestRaw) {
     if (!lostPending) {
       lostPending = true;
       lostSince = millis();
     } else if (millis() - lostSince >= LOST_TIME_MS &&
                millis() - lastScanEnd >= RESCAN_COOLDOWN_MS) {
-      Serial.println(F("LOST the light - scanning for it again..."));
+      Serial.print(F("LOST the light (average reading "));
+      Serial.print((int)smoothedRawAvg);
+      Serial.print(F(", was "));
+      Serial.print((int)scanBestRaw);
+      Serial.println(F(" after the scan) - scanning for it again..."));
       scanForLight();
       return;
     }
@@ -508,8 +517,11 @@ float readLdrRaw(uint8_t pin) {
 // the tracker can't tell it's off target. Undoing the divider math spreads
 // them back out (here about 5x apart), so the tracker sees shadows clearly.
 // It also makes calibration correct at any brightness.
+//
+// Readings are capped at 1015: above that the sensor is basically maxed out
+// and the conversion would just blow up the noise.
 float brightnessFromRaw(float rawValue) {
-  if (rawValue > 1023) rawValue = 1023;
+  if (rawValue > 1015) rawValue = 1015;
   if (rawValue < 0)    rawValue = 0;
   return rawValue / (1023.5 - rawValue);
 }
@@ -535,10 +547,6 @@ void readAllSensors(bool resetSmoothing) {
   } else {
     smoothedRawAvg += SMOOTHING * (rawAvg - smoothedRawAvg);
   }
-}
-
-float totalBrightness() {
-  return smoothed[0] + smoothed[1] + smoothed[2] + smoothed[3];
 }
 
 // Turns four brightness values (TL, TR, BL, BR) into the two errors.
@@ -693,7 +701,7 @@ void scanForLight() {
   Serial.println((int)(bestTilt + 0.5));
 
   readAllSensors(true);
-  scanBestBrightness = totalBrightness();
+  scanBestRaw = smoothedRawAvg;
   resetTrackingState();
   lastScanEnd = millis();
   Serial.println(F("Tracking..."));
@@ -901,35 +909,58 @@ void runCalibration() {
   Serial.println(F("Measuring - hold still..."));
 
   float total[4] = {0, 0, 0, 0};
-  float rawTotal = 0;
+  float rawSum[4] = {0, 0, 0, 0};
   int count = 0;
   unsigned long start = millis();
   while (millis() - start < CAL_MEASURE_MS) {
     for (int i = 0; i < 4; i++) {
       float r = readLdrRaw(LDR_PINS[i]);
-      rawTotal += r;
+      rawSum[i] += r;
       total[i] += brightnessFromRaw(r);
     }
     count++;
     delay(10);
   }
 
-  if (rawTotal / (4.0 * count) < DARK_THRESHOLD * 2) {
-    Serial.println(F("FAILED: too dark. Use a brighter light and try again."));
-    return;
+  // Check each sensor's raw reading first.
+  for (int i = 0; i < 4; i++) {
+    float rawAvg = rawSum[i] / count;
+    if (rawAvg < CAL_DEAD_RAW) {
+      Serial.print(F("FAILED: sensor "));
+      Serial.print(i == 0 ? F("TL") : i == 1 ? F("TR") : i == 2 ? F("BL") : F("BR"));
+      Serial.println(F(" reads almost 0 - it's covered, unplugged, or its wire is loose."));
+      Serial.println(F("Nothing saved."));
+      return;
+    }
+    if (rawAvg > CAL_MAXED_RAW) {
+      Serial.print(F("FAILED: sensor "));
+      Serial.print(i == 0 ? F("TL") : i == 1 ? F("TR") : i == 2 ? F("BL") : F("BR"));
+      Serial.println(F(" is maxed out (light too bright). Hold the flashlight"));
+      Serial.println(F("farther from the paper and try again. Nothing saved."));
+      return;
+    }
   }
 
-  float mean = (total[0] + total[1] + total[2] + total[3]) / 4.0;
+  // Reference = geometric mean, so corrections are balanced (some sensors
+  // get turned up, some turned down) instead of all piling onto one.
+  float logSum = 0;
+  for (int i = 0; i < 4; i++) logSum += log(total[i] / count);
+  float reference = exp(logSum / 4.0);
+
   Calibration newCal;
   newCal.magic = CAL_MAGIC;
   for (int i = 0; i < 4; i++) {
-    newCal.gain[i] = (total[i] > 0) ? mean / total[i] : 0;
-    if (newCal.gain[i] < CAL_MIN_GAIN || newCal.gain[i] > CAL_MAX_GAIN) {
-      Serial.print(F("FAILED: sensor "));
+    newCal.gain[i] = clampFloat(reference / (total[i] / count), CAL_MIN_GAIN, CAL_MAX_GAIN);
+  }
+
+  // Warn (but still save) if a sensor needed a really big correction.
+  for (int i = 0; i < 4; i++) {
+    if (newCal.gain[i] > CAL_WARN_GAIN || newCal.gain[i] < 1.0 / CAL_WARN_GAIN) {
+      Serial.print(F("Note: sensor "));
       Serial.print(i == 0 ? F("TL") : i == 1 ? F("TR") : i == 2 ? F("BL") : F("BR"));
-      Serial.println(F(" is way off from the others. Is it shaded, or the light"));
-      Serial.println(F("not even? Check its wiring, then try again. Nothing saved."));
-      return;
+      Serial.println(F(" needed a big correction. That's OK, but if the light on the"));
+      Serial.println(F("  paper wasn't even, redo it. If that sensor's leg was repaired,"));
+      Serial.println(F("  a loose joint can make it read low - worth checking."));
     }
   }
 

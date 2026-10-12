@@ -184,13 +184,17 @@ No two photoresistors read exactly the same. Calibration measures each one's qui
 4. It prints something like `Calibration (100 = no correction): TL 95  TR 134  BL 105  BR 80` and saves it. It **stays saved** after unplugging and re-uploading. Redo it if you swap a sensor. Type `r` to clear it.
 5. Remove the paper and type **`g`** + Enter to start tracking.
 
-If it says `FAILED`, one sensor read very differently. Check that the paper covers all four sensors evenly and that sensor's wiring.
+If it says `FAILED`:
+- **"maxed out"**: the light is too bright for the sensors. Hold the flashlight farther from the paper (or use the room light).
+- **"reads almost 0"**: that sensor is covered, unplugged, or has a loose wire.
+
+A **"Note: ... needed a big correction"** message still saves. It just means that sensor reads quite differently from the others. That's fine, but if the light on the paper was uneven, redo it, and if that sensor's leg was repaired, check the joint.
 
 ### 5. Normal use
 
 Every time it powers on, the tracker:
 1. **Moves to the middle** (90/90).
-2. **Scans** for the brightest direction (about 15 seconds). **Hold your flashlight still during the scan.**
+2. **Scans** for the brightest direction (about 20 seconds). **Hold your flashlight still during the scan.**
 3. **Checks the servo directions** using what it saw during the scan, and fixes any that are backwards:
    ```
    CHECK: which way is toward the light?
@@ -198,7 +202,7 @@ Every time it powers on, the tracker:
      PAN : reversed  (sure: 92%)  <- auto-corrected
    ```
    If you see `auto-corrected` every time, you can set `TILT_REVERSED` / `PAN_REVERSED` in the code to match so it starts out right, but you don't have to.
-4. **Tracks.** If it loses the light (it ends up much darker than what the scan found, for 3 seconds), it prints `LOST the light` and scans again.
+4. **Tracks.** If it loses the light (readings drop below half of what they were right after the scan, for 5 seconds), it prints `LOST the light` and scans again.
 
 Type **`g`** + Enter at any time to make it rescan and restart tracking.
 
@@ -265,7 +269,7 @@ All settings are constants near the top of the code:
 | `PAN_MIN/MAX`, `TILT_MIN/MAX` | `10/170`, `30/150` | Servo limits. **Set these for your build** (see step 3). |
 | `AUTO_DIRECTION_CHECK` | `true` | Figure out the servo directions during each scan. |
 | `SCAN_ON_STARTUP` | `true` | Scan for the light every time it powers on. |
-| `LOST_FRACTION` / `LOST_TIME_MS` | `0.30` / `3000` | Rescan if it's below 30% of the scan's brightness for 3 seconds. |
+| `LOST_FRACTION` / `LOST_TIME_MS` | `0.50` / `5000` | Rescan if readings stay below half of what they were after the scan for 5 seconds. |
 | `WRAP_PAN_AT_LIMITS` | `true` | Allow the big swing past a pan end stop. Set `false` to just wait at the end stop. |
 | `WRAP_MIN_ERROR` / `WRAP_CONFIRM_MS` | `0.30` / `1500` | How clearly, and for how long, the light must be past the end stop before swinging. |
 | `DARK_THRESHOLD` | `30` | If the average raw reading is below this, it holds still. |
@@ -286,7 +290,9 @@ All settings are constants near the top of the code:
 | Jitters back and forth when pointed at the light | Calibrate (`c`). If it still jitters, raise `START_THRESHOLD` to `0.12` or lower `GAIN` to `3`. |
 | Stops a bit off from the light | Calibrate (`c`). If it's still off, lower `STOP_THRESHOLD` to `0.02`. |
 | Moves the wrong axis (tilts when it should turn) | Sensors are in the wrong pins, or the `+` wall isn't lined up with the tilt axis. |
-| `Solar tracker starting...` appears mid-run | The Arduino is resetting from servo power dips. Fix the limits, or use a separate servo supply. |
+| It keeps scanning over and over | Look for `Solar tracker starting...` between scans. If it's there, the Arduino is **resetting** from servo power dips (see next row). If not, look at the `LOST the light (average reading ..., was ...)` line: the light dropped to less than half. Keep the flashlight steady and pointed at the tracker. |
+| `Solar tracker starting...` appears mid-run | The Arduino is resetting from servo power dips. Two servos can be too much for USB. Fix the limits, and power the servos from a separate 5V supply (4×AA): its `+` to the servo-side `+` rail, its `−` to the servo-side `−` rail, unplug the Arduino's 5V wire from that rail, keep the GND wire. |
+| Sensor readings are usually above ~950 | The sensors are close to maxed out, which makes tracking and calibration less precise. Swap the four 10 kΩ resistors for **2 kΩ** (red-black-red) or **1 kΩ** (brown-black-red), same holes. |
 | Never moves | Too dark (`DARK-HOLD`), lined up already (`HOLD`), paused (`MANUAL`, so type `g`), or `SENSOR_TEST_MODE` is still `true`. |
 | Typing commands does nothing | Serial Monitor must be at 9600 baud. Type the command, then press Enter. |
 | Works with a flashlight but not in direct sunlight | In full sun all four sensors saturate near 1023. Swap the four 10 kΩ resistors for **1 kΩ** (brown-black-red) for outdoor use. |
