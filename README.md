@@ -233,6 +233,7 @@ TRACK | TL:935 TR:904 BL:928 BR:948 | up/down:12% left/right:-3% | light from: T
 | `TL:935 ...` | Raw readings, 0–1023 (same numbers as the sensor test). |
 | `up/down:12%` | How much brighter the top is than the bottom (negative = bottom brighter). It starts moving above **8%** and stops below **3%**. |
 | `left/right:-3%` | Same for left vs. right (negative = right brighter). |
+| `panel:5.73V (max 6.10)` | Solar panel voltage now, and the highest seen since startup. With `PANEL_LOAD_OHMS` set, also watts. |
 | `pan:84 tilt:101` | Where the servos are aimed. `(at limit)` means one is at a limit from the code. |
 
 Seeing `Solar tracker starting...` again in the middle of a run means the Arduino **reset**, which is almost always a servo power problem (see Troubleshooting).
@@ -274,6 +275,9 @@ All settings are constants near the top of the code:
 | `WRAP_MIN_ERROR` / `WRAP_CONFIRM_MS` | `0.30` / `1500` | How clearly, and for how long, the light must be past the end stop before swinging. |
 | `DARK_THRESHOLD` | `30` | If the average raw reading is below this, it holds still. |
 | `SAMPLES_PER_READ` | `8` | Readings averaged per sensor. |
+| `PANEL_MONITOR` | `true` | Show the solar panel voltage (A4) in the status line. |
+| `ARDUINO_VOLTS` | `5.0` | The Arduino's real 5V (measure it with a multimeter for better accuracy). |
+| `PANEL_LOAD_OHMS` | `0` | Load resistor across the panel. Set it (e.g. `220`) to also show watts. |
 | `SERIAL_DEBUG` | `true` | Prints the status line 4× per second. |
 
 ---

@@ -24,6 +24,8 @@
  *  - Top pair vs. bottom pair  -> drives the TILT servo (up / down)
  *  - Left pair vs. right pair  -> drives the PAN  servo (CW / CCW)
  *
+ *  The solar panel's voltage (on A4) is shown in the status line too.
+ *
  *  ON STARTUP it:
  *    1. moves both servos smoothly to the middle (HOME),
  *    2. SCANS around to find the brightest direction and points there,
@@ -63,6 +65,26 @@ const uint8_t LDR_BOTTOM_RIGHT_PIN = A3;
 // Servos
 const uint8_t PAN_SERVO_PIN  = 9;   // turns the tracker clockwise / counterclockwise
 const uint8_t TILT_SERVO_PIN = 10;  // tilts the panel plate up / down
+
+// ============================================================================
+//  SOLAR PANEL MONITOR
+// ============================================================================
+//  The panel feeds A4 through a divide-by-3 voltage divider (three 10k
+//  resistors, see WIRING.md), so A4 never sees more than 5V. The status line
+//  then shows   panel:5.73V (max 6.10)   and, with a load resistor, watts.
+
+const bool    PANEL_MONITOR = true;
+const uint8_t PANEL_PIN     = A4;
+const float   PANEL_DIVIDER = 3.0;   // (top resistors + bottom) / bottom = 30k / 10k
+
+// The Arduino's real 5V. Over USB it's often 4.8 - 5.0. For better accuracy,
+// measure between the 5V and GND pins with a multimeter and put it here.
+const float   ARDUINO_VOLTS = 5.0;
+
+// Load resistor across the panel (for measuring power), in ohms.
+// 0 = no load resistor, so only voltage is shown. Set to 220 (or whatever
+// you used) after adding one, and the status line also shows watts (V*V/R).
+const float   PANEL_LOAD_OHMS = 0;
 
 // ============================================================================
 //  SERVO LIMITS  (degrees, 0 - 180)   <-- SET THESE FOR YOUR BUILD
@@ -264,6 +286,8 @@ Calibration cal;
 float raw[4];        // latest raw readings, 0 - 1023 (what you saw in test mode)
 float smoothed[4];   // smoothed, calibrated brightness used for tracking
 float smoothedRawAvg = 0;  // smoothed average raw reading (for the dark check)
+float panelVolts = 0;      // smoothed solar panel voltage
+float panelMaxVolts = 0;   // highest panel voltage seen since startup
 
 bool manualMode = false;       // true after h / p / t: tracking paused
 bool tiltMoving = false;       // start/stop threshold state for each axis
@@ -289,6 +313,7 @@ unsigned long lastDebugPrint = 0;
 // Function prototypes (needed by PlatformIO; harmless in the Arduino IDE)
 float readLdrRaw(uint8_t pin);
 float brightnessFromRaw(float rawValue);
+float readPanelVolts();
 void  readAllSensors(bool resetSmoothing);
 void  computeErrors(const float *b, float &vertError, float &horizError);
 void  measureAveraged(float &vertError, float &horizError, float &total);
@@ -547,6 +572,23 @@ void readAllSensors(bool resetSmoothing) {
   } else {
     smoothedRawAvg += SMOOTHING * (rawAvg - smoothedRawAvg);
   }
+
+  if (PANEL_MONITOR) {
+    float v = readPanelVolts();
+    panelVolts = resetSmoothing ? v : panelVolts + SMOOTHING * (v - panelVolts);
+    if (panelVolts > panelMaxVolts) panelMaxVolts = panelVolts;
+  }
+}
+
+// Reads the solar panel's voltage (through the voltage divider on A4).
+float readPanelVolts() {
+  analogRead(PANEL_PIN);  // throw away first read after switching pins
+  long total = 0;
+  for (int i = 0; i < SAMPLES_PER_READ; i++) {
+    total += analogRead(PANEL_PIN);
+  }
+  float pinVolts = ((float)total / SAMPLES_PER_READ) / 1023.0 * ARDUINO_VOLTS;
+  return pinVolts * PANEL_DIVIDER;
 }
 
 // Turns four brightness values (TL, TR, BL, BR) into the two errors.
@@ -1015,6 +1057,20 @@ void printDebug(float vertError, float horizError, const char *status) {
   if (horizError > START_THRESHOLD)       { Serial.print(F("LEFT"));    centered = false; }
   else if (horizError < -START_THRESHOLD) { Serial.print(F("RIGHT"));   centered = false; }
   if (centered) Serial.print(F("CENTER"));
+
+  if (PANEL_MONITOR) {
+    Serial.print(F(" | panel:"));
+    Serial.print(panelVolts, 2);
+    Serial.print(F("V"));
+    if (PANEL_LOAD_OHMS > 0) {
+      Serial.print(F(" "));
+      Serial.print(panelVolts * panelVolts / PANEL_LOAD_OHMS, 3);
+      Serial.print(F("W"));
+    }
+    Serial.print(F(" (max "));
+    Serial.print(panelMaxVolts, 2);
+    Serial.print(F(")"));
+  }
 
   Serial.print(F(" | pan:"));  Serial.print((int)(panPos + 0.5));
   Serial.print(F(" tilt:"));   Serial.print((int)(tiltPos + 0.5));

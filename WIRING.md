@@ -256,6 +256,39 @@ If one doesn't move:
 
 ---
 
+## Step 7: Solar panel voltage (bottom of the right half)
+
+The panel's voltage is read on **A4** through a **divide-by-3 voltage divider** (three 10 kΩ resistors), so the Arduino pin never sees more than 5V even if the panel puts out up to ~15V. This is for the full-size board (rows go to 62/63).
+
+| # | Wire / part | End 1 | End 2 |
+|---|-------------|-------|-------|
+| 38 | panel **+** wire (usually red) | **f58** | (panel) |
+| 39 | panel **−** wire (usually black) | **right `−` rail**, beside row 59 | (panel) |
+| 40 | 10 kΩ resistor #1 | **j58** | **j60** |
+| 41 | 10 kΩ resistor #2 | **i60** | **i62** |
+| 42 | 10 kΩ resistor #3 | **j62** | **right `−` rail**, beside row 62 |
+| 43 | jumper (e.g. purple) | **g62** | Arduino **A4** |
+
+Leave rows **59** and **61** empty in columns f–j.
+
+- The panel **+** wire **never** goes in a rail.
+- The panel **−** wire **must** go in the `−` rail so the panel and Arduino share ground.
+- ⚠️ **Rail split:** on long boards the side rails are often cut in half around rows 30–33 (look for a **break in the blue line**). If yours has one, add a **black jumper** from the right `−` rail just above the break to just below it, or the panel won't share ground and the reading will be garbage.
+
+**Panel voltage = (A4 reading ÷ 1023) × 5 × 3.** The code does this for you: the status line shows `panel:5.73V (max 6.10)`.
+
+### Optional: load resistor (to measure power)
+With only the divider, you're reading **open-circuit voltage**, which barely changes with light. To measure **power**, add one resistor from **i58** to the **right `−` rail**, sized by the `max` voltage the status line shows in bright light:
+
+| `max` voltage in bright light | Load resistor |
+|---|---|
+| up to ~7V | **220 Ω** (red-red-brown) |
+| ~7–15V | **two 220 Ω in series**, or one **1 kΩ** (brown-black-red) |
+
+Then set `PANEL_LOAD_OHMS` in the code to that value (e.g. `220`), and the status line also shows watts (V² ÷ R).
+
+---
+
 ## Cable management
 
 1. Your sensor cables are already color-coded. Add masking-tape flags to the servo cables: `PAN`, `TILT`.
@@ -275,7 +308,8 @@ If one doesn't move:
 - [ ] **No capacitor** anywhere on the board
 - [ ] Sensors: rows 3–4 yellow → A0, rows 8–9 red → A1, rows 13–14 blue → A2, rows 18–19 green → A3
 - [ ] Sensor blocks: white jumper in the **upper** row, resistor + colored jumper in the **lower** row
-- [ ] Nothing in the empty rows, and nothing in columns **b, d, g, i**
+- [ ] Solar panel: **+** in **f58**, **−** in the right `−` rail, resistors **j58→j60**, **i60→i62**, **j62→rail**, jumper **g62 → A4**
+- [ ] Nothing in the empty rows, and nothing in columns **b, d, g, i** (except the panel divider in rows 58–62)
 
 ---
 
