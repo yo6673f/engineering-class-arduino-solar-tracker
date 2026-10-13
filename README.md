@@ -231,7 +231,7 @@ TRACK | TL:935 TR:904 BL:928 BR:948 | up/down:12% left/right:-3% | light from: T
 |------|---------|
 | `TRACK` / `HOLD` | Moving toward the light / lined up and resting. Also `MANUAL` (paused after `h`/`p`/`t`, type `g` to resume), `DARK-HOLD` (too dark), `WRAP` (big swing past an end stop), `TEST` (sensor test mode). |
 | `TL:935 ...` | Raw readings, 0–1023 (same numbers as the sensor test). |
-| `up/down:12%` | How much brighter the top is than the bottom (negative = bottom brighter). It starts moving above **8%** and stops below **3%**. |
+| `up/down:12%` | How much brighter the top is than the bottom (negative = bottom brighter). It starts moving above **5%** and stops below **2%**. |
 | `left/right:-3%` | Same for left vs. right (negative = right brighter). |
 | `panel:5.73V (max 6.10)` | Solar panel voltage now, and the highest seen since startup. With `PANEL_LOAD_OHMS` set, also watts. |
 | `pan:84 tilt:101` | Where the servos are aimed. `(at limit)` means one is at a limit from the code. |
@@ -245,8 +245,8 @@ Seeing `Solar tracker starting...` again in the middle of a run means the Arduin
 - **Brightness conversion:** with the 10 kΩ divider, bright light squashes all readings up near 1023, so a lit sensor (990) and a shaded one (850) look almost the same. The code undoes the divider math, which spreads the readings back out about 5×, so it can actually see the shadows.
 - **Calibration** cancels out differences between individual sensors.
 - **Smoothing** averages readings over time to ignore electrical noise.
-- **Start/stop thresholds:** it starts moving at an 8% difference but keeps going until it's under 3%, so it doesn't twitch on and off around one cutoff.
-- **Small steps** (at most 1° every 40 ms), sent to the servos in fine microsecond steps instead of whole degrees, so motion is smooth and the plate has time to keep up.
+- **Start/stop thresholds:** it starts moving at a 5% difference but keeps going until it's under 2%, so it doesn't twitch on and off around one cutoff.
+- **Limited steps** (at most 2° every 40 ms), sent to the servos in fine microsecond steps instead of whole degrees, so motion is smooth and the plate has time to keep up.
 - **Flat-zone buffer:** the pan direction only flips once the plate is 6° past flat, so it doesn't flip-flop when the light is overhead.
 - **Startup scan + direction check:** it starts out pointed at the light, and checks for itself which way each servo has to turn, so a servo mounted backwards doesn't send it running away from the light.
 - **Lost-light recovery:** if it ends up somewhere much darker than what the scan found, it scans again instead of sitting in a corner.
@@ -260,10 +260,10 @@ All settings are constants near the top of the code:
 
 | Setting | Default | What it does |
 |---------|---------|--------------|
-| `START_THRESHOLD` | `0.08` | Starts moving when one side is 8% brighter. Raise it (e.g. `0.12`) if it still twitches. |
-| `STOP_THRESHOLD` | `0.03` | Keeps moving until the difference is under 3%. Lower = more precise aiming. Must be smaller than `START_THRESHOLD`. |
-| `GAIN` | `4.0` | How hard it pushes toward the light. Higher = faster but may overshoot and wobble. |
-| `MAX_STEP` | `1.0` | Most degrees it moves per update. Lower = smoother and slower. |
+| `START_THRESHOLD` | `0.05` | Starts moving when one side is 5% brighter. Lower = more sensitive; raise it (e.g. `0.08`) if it twitches. |
+| `STOP_THRESHOLD` | `0.02` | Keeps moving until the difference is under 2%. Lower = more precise aiming. Must be smaller than `START_THRESHOLD`. |
+| `GAIN` | `12.0` | How hard it pushes toward the light. Higher = faster but may overshoot and wobble. |
+| `MAX_STEP` | `2.0` | Most degrees it moves per update. Higher = faster top speed; lower = smoother. |
 | `SMOOTHING` | `0.3` | 0–1. Lower = smoother readings but slower reactions. |
 | `LOOP_INTERVAL_MS` | `40` | Time between updates. |
 | `FLAT_HYSTERESIS` | `6.0` | Degrees past flat before the pan direction flips. |
@@ -291,8 +291,9 @@ All settings are constants near the top of the code:
 | All four readings dip at the same moment, sometimes `DARK-HOLD` flickers | Power dips from a straining servo. Fix the limits first; if it continues, use a separate 5V supply for the servos (GND connected to the Arduino GND). |
 | Runs away from the light | Make sure the light was steady during the startup scan, then type `g` to rescan. The `CHECK:` lines should say it's sure. |
 | `CHECK:` says `can't tell` | The light was too weak or too even during the scan. Use a brighter flashlight, hold it closer and still, and type `g`. |
-| Jitters back and forth when pointed at the light | Calibrate (`c`). If it still jitters, raise `START_THRESHOLD` to `0.12` or lower `GAIN` to `3`. |
-| Stops a bit off from the light | Calibrate (`c`). If it's still off, lower `STOP_THRESHOLD` to `0.02`. |
+| Jitters back and forth when pointed at the light | Calibrate (`c`). If it still jitters, raise `START_THRESHOLD` to `0.08` or lower `GAIN` to `8`. |
+| Sensor numbers change but it barely moves / lags behind the light | Make sure the status says `TRACK`/`HOLD`, not `MANUAL` (type `g`). Then raise `GAIN` (try `16`) and `MAX_STEP` (try `2.5`), or lower `START_THRESHOLD` (try `0.04`). |
+| Stops a bit off from the light | Calibrate (`c`). If it's still off, lower `STOP_THRESHOLD` to `0.015`. |
 | Moves the wrong axis (tilts when it should turn) | Sensors are in the wrong pins, or the `+` wall isn't lined up with the tilt axis. |
 | It keeps scanning over and over | Look for `Solar tracker starting...` between scans. If it's there, the Arduino is **resetting** from servo power dips (see next row). If not, look at the `LOST the light (average reading ..., was ...)` line: the light dropped to less than half. Keep the flashlight steady and pointed at the tracker. |
 | `Solar tracker starting...` appears mid-run | The Arduino is resetting from servo power dips. Two servos can be too much for USB. Fix the limits, and power the servos from a separate 5V supply (4×AA): its `+` to the servo-side `+` rail, its `−` to the servo-side `−` rail, unplug the Arduino's 5V wire from that rail, keep the GND wire. |

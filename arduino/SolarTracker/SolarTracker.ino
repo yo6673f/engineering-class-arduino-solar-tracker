@@ -189,16 +189,17 @@ const unsigned long WRAP_SWING_MS   = 1500; // how long the big swing takes
 // Start moving an axis when its error gets bigger than START_THRESHOLD, then
 // keep moving until it's smaller than STOP_THRESHOLD. Having two thresholds
 // stops the tracker from twitching on and off around a single cutoff.
-const float START_THRESHOLD = 0.08;
-const float STOP_THRESHOLD  = 0.03;
+const float START_THRESHOLD = 0.05;
+const float STOP_THRESHOLD  = 0.02;
 
 // How hard to push toward the light: degrees moved per update for each unit
-// of error. With GAIN = 4, a 25% error asks for a 1 degree step.
-const float GAIN = 4.0;
+// of error. With GAIN = 12, a 10% error asks for a 1.2 degree step.
+// Too slow / barely moves -> raise it. Wobbles or twitches -> lower it.
+const float GAIN = 12.0;
 
 // Never move more than this many degrees in one update (keeps motion smooth
 // and gives the servos and plate time to keep up).
-const float MAX_STEP = 1.0;
+const float MAX_STEP = 2.0;
 
 // Sensor smoothing, 0 - 1. Smaller = smoother but slower to react.
 const float SMOOTHING = 0.3;
