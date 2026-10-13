@@ -123,11 +123,13 @@ const float FLAT_HYSTERESIS = 6.0;
 // ============================================================================
 //  DIRECTION SETTINGS
 // ============================================================================
-//  With AUTO_DIRECTION_CHECK on (recommended), the tracker figures these out
-//  by itself during every scan, so you normally never touch them. They're
-//  only the starting guess (and what's used if the scan can't tell).
+//  AUTO_DIRECTION_CHECK is OFF: the directions below are always used exactly
+//  as set, and the code never flips them on its own.
+//  If an axis turns AWAY from the light, change its setting (false <-> true)
+//  and re-upload.
+//  (Set AUTO_DIRECTION_CHECK = true to let each scan figure them out instead.)
 
-const bool AUTO_DIRECTION_CHECK = true;
+const bool AUTO_DIRECTION_CHECK = false;
 const bool TILT_REVERSED = false;
 const bool PAN_REVERSED  = false;
 

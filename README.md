@@ -195,13 +195,7 @@ A **"Note: ... needed a big correction"** message still saves. It just means tha
 Every time it powers on, the tracker:
 1. **Moves to the middle** (90/90).
 2. **Scans** for the brightest direction (about 20 seconds). **Hold your flashlight still during the scan.**
-3. **Checks the servo directions** using what it saw during the scan, and fixes any that are backwards:
-   ```
-   CHECK: which way is toward the light?
-     TILT: normal  (sure: 99%)
-     PAN : reversed  (sure: 92%)  <- auto-corrected
-   ```
-   If you see `auto-corrected` every time, you can set `TILT_REVERSED` / `PAN_REVERSED` in the code to match so it starts out right, but you don't have to.
+3. **Uses the fixed directions** from `TILT_REVERSED` / `PAN_REVERSED` (automatic direction correction is off, so it never flips them on its own). If an axis turns **away** from the light, change that setting (`false` ↔ `true`) and re-upload.
 4. **Tracks.** If it loses the light (readings drop below half of what they were right after the scan, for 5 seconds), it prints `LOST the light` and scans again.
 
 Type **`g`** + Enter at any time to make it rescan and restart tracking.
@@ -268,7 +262,7 @@ All settings are constants near the top of the code:
 | `LOOP_INTERVAL_MS` | `40` | Time between updates. |
 | `FLAT_HYSTERESIS` | `6.0` | Degrees past flat before the pan direction flips. |
 | `PAN_MIN/MAX`, `TILT_MIN/MAX` | `10/170`, `30/150` | Servo limits. **Set these for your build** (see step 3). |
-| `AUTO_DIRECTION_CHECK` | `true` | Figure out the servo directions during each scan. |
+| `AUTO_DIRECTION_CHECK` | `false` | Off: the code always uses `TILT_REVERSED` / `PAN_REVERSED` exactly as set and never flips them. Set `true` to let each scan figure them out. |
 | `SCAN_ON_STARTUP` | `true` | Scan for the light every time it powers on. |
 | `LOST_FRACTION` / `LOST_TIME_MS` | `0.50` / `5000` | Rescan if readings stay below half of what they were after the scan for 5 seconds. |
 | `WRAP_PAN_AT_LIMITS` | `true` | Allow the big swing past a pan end stop. Set `false` to just wait at the end stop. |
